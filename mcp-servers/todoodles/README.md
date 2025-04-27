@@ -181,36 +181,53 @@ volumes:
 
 ## Next Steps
 
-1. **Visual Feedback**
+1. **Core Features**
+   - Build out a system for saving user-specific memory files
+   - Organize todoodles into projects
+   - Add todoodle categories and tags
+   - Implement priority levels
+   - Add due dates and reminders
+   - Support recurring todoodles
+   - Create todoodle templates
+
+2. **Agent Integration**
+   - Enable AI agents to create and manage their own todoodles
+   - Allow agents to track their own tasks and progress
+   - Implement agent-specific task prioritization
+   - Create agent memory persistence through todoodles
+   - Develop agent task delegation capabilities
+   - Enable agent-to-agent task sharing
+   - Implement agent task completion verification
+   - Create agent performance analytics through task tracking
+
+3. **User Experience**
    - Add ASCII art representation of todoodles
    - Implement simple animation for completion
    - Create visual progress indicators
    - Add emoji-based status indicators
-
-2. **Enhanced Features**
-   - Todoodle categories and tags
-   - Priority levels
-   - Due dates and reminders
-   - Recurring todoodles
-   - Todoodle templates
-
-3. **User Experience**
    - Interactive CLI interface
    - Rich text formatting
    - Customizable themes
    - Keyboard shortcuts
 
-4. **Integration**
+4. **Integration & Collaboration**
    - Calendar integration
    - Email notifications
    - Mobile app companion
    - Web interface
+   - Multi-user support
+   - Sharing capabilities
+   - Team collaboration features
 
 5. **Advanced Features**
    - Todoodle dependencies
    - Progress tracking
    - Time estimates
    - Analytics and reporting
+   - Export/Import functionality
+   - Backup and restore
+   - Version history
+   - Search and filtering enhancements
 
 ## License
 
