@@ -1,0 +1,85 @@
+version: 1.0.8
+
+endpoints:
+  custom:
+    - name: 'llamacpp'
+      baseURL: "http://host.docker.internal:8080/completion"
+      apiKey: 'not-needed'
+      models:
+        default: ['BitAgent-8B.Q8_0.gguf', 'Llama-xLAM-2-8B-fc-r-Q8_0.gguf', 'watt-tool-8B.Q8_0.gguf']
+        fetch: false
+      titleConvo: false
+      titleModel: 'BitAgent-8B.Q8_0.gguf'   # Replace with your actual model name
+      modelDisplayLabel: 'LlamaCPP'
+      forcePrompt: true
+      directEndpoint: true
+      addParams:
+        stream: true
+      dropParams: ["stop", "user", "frequency_penalty", "presence_penalty"]
+      headers:
+        Authorization: "Bearer no-key"
+    
+    - name: "ollama"
+      apiKey: "ollama"
+      baseURL: "http://172.17.0.1:11434/v1"
+      models:
+        default: [ "bitagent", "qwen3:14b", "phi4-mini", qwen2.5:14b, xlam-2-3b]
+        fetch: true
+      titleConvo: false
+      titleModel: "current_model"
+      summarize: false
+      summaryModel: "current_model"
+      forcePrompt: false
+      modelDisplayLabel: "Ollama"
+      
+speech:
+  stt:
+    openai:
+      apiKey: '${STT_API_KEY}'
+      model: 'whisper-1'
+  tts:
+    localai:
+      url: "http://host.docker.internal:8002/v1/audio/speech/stream"
+      voices: ["test_voice", "Karlach_v1", "Gale_v1", "Astarion_v1", "Kirkv1"]
+      backend: 'zonos'
+      apiKey: ''  # Zonos API doesn't require authentication
+  speechTab:
+    conversationMode: true
+    advancedMode: false
+    speechToText:
+      engineSTT: "openai"
+      languageSTT: "English (US)"
+      autoTranscribeAudio: true
+      decibelValue: -45
+      autoSendText: 0
+
+mcpServers:
+  memory:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/memory/src/memory/dist/index.js"
+    timeout: 30000
+    initTimeout: 10000
+    env:
+        # NODE_ENV: "production"
+        MEMORY_FILE_PATH: "/media/drakosfire/Shared/Projects/Sizzek/memory_files/memory.json"
+    stderr: inherit
+
+  todoodles:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/todoodles/dist/index.js"
+    timeout: 30000
+    initTimeout: 10000
+    env:
+        # NODE_ENV: "production"
+        TODOS_FILE_PATH: "/media/drakosfire/Shared/Projects/Sizzek/memory_files/todoodles.json"
+    stderr: inherit
+
+  twilio-sms:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/twilio-sms/dist/index.js"
