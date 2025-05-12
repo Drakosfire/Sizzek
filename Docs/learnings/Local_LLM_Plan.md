@@ -158,3 +158,20 @@ Options to consider:
 - Performance monitoring
 - User feedback collection
 - Regular evaluation 
+
+
+# inside the container’s shell
+wget \
+  --header='Content-Type: application/json' \
+  --header='Authorization: Bearer no-key' \
+  --post-data='{"model":"Llama-xLAM-2-8B-fc-r-Q8_0.gguf","messages":[{"role":"user","content":"ping"}]}' \
+  -qO- \
+  http://host.docker.internal:8081/v1/chat/completions
+
+# ollama 
+wget \
+  --header='Content-Type: application/json' \
+  --header='Authorization: Bearer no-key' \
+  --post-data='{"model":"Llama-xLAM-2-8B-fc-r-Q8_0.gguf","messages":[{"role":"user","content":"ping"}]}' \
+  -qO- \
+  http://host.docker.internal:11434/

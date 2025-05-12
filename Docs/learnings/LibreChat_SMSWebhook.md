@@ -1,0 +1,210 @@
+# LibreChat SMS Webhook Integration
+
+## Overview
+
+This document outlines the plan and technical learnings for integrating SMS replies (received via Twilio) into LibreChat conversations. The goal is to ensure that when a user replies to an SMS sent by an agent, their response is injected into the correct LibreChat conversation, appears in the UI in real time, and is stored in the database—without blocking the agent's main workflow.
+
+---
+
+## Goals
+
+- **Receive SMS replies via Twilio webhooks.**
+- **Map incoming SMS to the correct LibreChat conversation.**
+- **Inject the SMS as a user message into LibreChat, using the same backend logic as the UI.**
+- **Ensure the message is stored in the DB and appears in the UI in real time (via SSE).**
+- **Optionally, trigger an agent/LLM response if that's the normal flow.**
+- **Respond to Twilio with TwiML as required.**
+- **Do not block the agent's main work stream while waiting for SMS replies.**
+
+---
+
+## Technical Learnings
+
+### LibreChat Message Flow
+
+- **Messages are injected into LibreChat via the `/api/agents/chat` endpoint.**
+- **The frontend listens for new messages via Server-Sent Events (SSE).**
+- **If a message is injected using the same backend logic as the UI, it will:**
+  - Be saved to the database.
+  - Appear in the UI in real time.
+  - Optionally trigger an agent/LLM response.
+- **Authentication is required:** Use a valid access (JWT) token, not a refresh token.
+- **All message payloads must match the structure expected by `/api/agents/chat`.**
+
+### Twilio Webhook Flow
+
+- **Twilio sends an HTTP POST to a webhook URL you configure when an SMS is received.**
+- **The webhook handler can perform any server-side logic (DB updates, API calls, etc.).**
+- **Twilio expects a TwiML (XML) response.** You can reply to the SMS or send an empty response.
+- **You must respond within 15 seconds.**
+- **Security:** Validate that incoming requests are from Twilio.
+
+---
+
+## Implementation Plan
+
+### 1. Set Up the Webhook Endpoint
+
+- Create an Express route (e.g., `/api/sms/webhook`) to receive POST requests from Twilio.
+- Use `body-parser` middleware to parse incoming form data.
+
+### 2. Parse and Map Incoming SMS
+
+- Extract the sender's phone number (`From`) and message body (`Body`) from `req.body`.
+- Map the phone number to the correct LibreChat `conversationId` (using a mapping table or DB).
+
+### 3. Build and Inject the Message
+
+- Construct a payload matching what the UI sends to `/api/agents/chat`:
+  - `text`: The SMS body
+  - `sender`: e.g., `"SMS User"`
+  - `isCreatedByUser`: `true`
+  - `conversationId`: (from mapping)
+  - `parentMessageId`: (last message in the conversation)
+  - `endpoint`, `agent_id`, etc.: as required
+  - Generate new UUIDs and timestamps as needed
+- Inject the message using:
+  - **Option 1:** Internal backend function (preferred if you have access).
+  - **Option 2:** HTTP POST to `/api/agents/chat` with a valid access token.
+
+### 4. Respond to Twilio
+
+- Use the Twilio Node.js SDK to generate a TwiML response.
+- If you want to reply to the SMS, include a `<Message>` in the TwiML.
+- If not, send an empty TwiML response.
+
+### 5. Security
+
+- Validate incoming requests are from Twilio (see [Twilio's security docs](https://www.twilio.com/docs/usage/security#validating-requests)).
+
+---
+
+## Exposing the Webhook Endpoint Securely (Home Server Considerations)
+
+### Why This Matters
+
+To receive SMS replies from Twilio, your webhook endpoint must be accessible from the public internet. If you are running LibreChat from a home server, this introduces additional security and reliability considerations.
+
+### Options for Exposing Your Endpoint
+
+- **Port Forwarding:**
+  - You can forward a port from your home router to your server. This is simple but exposes your server directly to the internet, which is risky.
+- **Reverse Proxy (Recommended):**
+  - Use a reverse proxy (e.g., Nginx, Caddy, Traefik) to route traffic to your webhook endpoint. This allows for SSL termination and additional access controls.
+- **Tunneling Services:**
+  - Use a service like [ngrok](https://ngrok.com/), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/), or [localtunnel](https://theboroer.github.io/localtunnel-www/) to expose your local server to the internet without opening ports. This is great for development and testing, but may not be suitable for production.
+- **Cloud Hosting:**
+  - Deploy just the webhook handler to a cloud function or small VPS, and have it forward messages to your home server over a secure channel (e.g., VPN, webhook relay).
+
+### Security Best Practices
+
+- **Restrict Access:**
+  - Only allow Twilio's IP ranges to access your webhook endpoint. [Twilio publishes their IP ranges here.](https://www.twilio.com/docs/usage/security#twilio-ips)
+- **Validate Requests:**
+  - Use Twilio's request validation to ensure incoming requests are genuinely from Twilio. [See docs.](https://www.twilio.com/docs/usage/security#validating-requests)
+- **Use HTTPS:**
+  - Always serve your webhook endpoint over HTTPS. Twilio requires this for production.
+- **Do Not Expose More Than Needed:**
+  - Only expose the specific endpoint(s) required for Twilio. Do not expose your entire LibreChat instance to the public internet.
+- **Monitor and Log:**
+  - Log all incoming webhook requests and monitor for suspicious activity.
+- **Keep Software Updated:**
+  - Regularly update your OS, Node.js, and all dependencies to patch security vulnerabilities.
+- **Consider Rate Limiting:**
+  - Implement rate limiting to prevent abuse.
+
+### Example: Restricting Access with Express Middleware
+
+```js
+// Only allow requests from Twilio's IPs
+const allowedIps = [/* Twilio IP ranges here */];
+app.use('/api/sms/webhook', (req, res, next) => {
+  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  if (!allowedIps.some(range => ipInRange(ip, range))) {
+    return res.status(403).send('Forbidden');
+  }
+  next();
+});
+```
+
+---
+
+## Example Webhook Handler
+
+```js
+const express = require('express');
+const bodyParser = require('body-parser');
+const { MessagingResponse } = require('twilio').twiml;
+
+const app = express();
+app.use(bodyParser.urlencoded({ extended: false }));
+
+app.post('/api/sms/webhook', async (req, res) => {
+  const from = req.body.From;
+  const body = req.body.Body;
+
+  // 1. Map phone number to conversationId
+  const conversationId = await lookupConversationIdByPhone(from);
+
+  // 2. Build LibreChat message payload
+  const payload = {
+    text: body,
+    sender: "SMS User",
+    isCreatedByUser: true,
+    conversationId,
+    endpoint: "agents",
+    parentMessageId: await getLastMessageId(conversationId),
+    // ...other required fields
+  };
+
+  // 3. Inject into LibreChat (call internal function or POST to /api/agents/chat)
+  await injectMessageInternal(payload);
+
+  // 4. Respond to Twilio (optional: send a reply SMS)
+  const twiml = new MessagingResponse();
+  // twiml.message('Thanks for your reply!'); // Uncomment to send a reply SMS
+  res.type('text/xml').send(twiml.toString());
+});
+
+app.listen(3000, () => {
+  console.log('Express server listening on port 3000');
+});
+```
+
+---
+
+## Twilio Webhook Best Practices
+
+- **Respond quickly** (within 15 seconds).
+- **Validate requests** to ensure they are from Twilio.
+- **Use TwiML** to control SMS replies.
+- **Configure your Twilio number** to use your webhook URL for incoming messages.
+
+---
+
+## Next Steps
+
+1. **Implement the webhook endpoint** in your backend.
+2. **Set up phone number to conversation mapping** logic.
+3. **Test message injection** by sending SMS replies and verifying they appear in LibreChat.
+4. **Secure your webhook** and handle errors/logging.
+5. **(Optional) Enhance**: Add support for media, group chats, or custom reply logic.
+
+---
+
+## References
+
+- [Twilio Webhooks Guide](https://www.twilio.com/docs/usage/webhooks)
+- [Twilio Node.js Quickstart](https://www.twilio.com/docs/sms/send-messages)
+- [LibreChat Internal API Exploration](#)
+- [Express.js Documentation](https://expressjs.com/)
+
+---
+
+## Conclusion
+
+By leveraging Twilio's webhook system and LibreChat's internal message injection logic, you can seamlessly integrate SMS replies into your chat application. This approach ensures real-time UI updates, robust data storage, and a smooth user experience—without blocking your agent's main workflow.
+
+---
+
+**For implementation code, troubleshooting, or further enhancements, refer to this document and the linked resources.** 
