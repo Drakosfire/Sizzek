@@ -12,5 +12,5 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ./models:/models
+      - ../models:/models
     command: [ "--n-gpu-layers", "99", "-m", "/models/Llama-xLAM-2-8B-fc-r-Q8_0.gguf", "--port", "8001", "--host", "0.0.0.0", "-n", "512", "--jinja", "-v" ]
