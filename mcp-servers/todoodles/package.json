@@ -17,7 +17,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^0.6.3",
+    "@modelcontextprotocol/sdk": "^1.11.1",
     "@types/node": "^20.11.24",
     "typescript": "^5.3.3"
   }

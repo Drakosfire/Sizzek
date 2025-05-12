@@ -1,0 +1,31 @@
+{
+  "name": "twilio-sms",
+  "version": "1.0.0",
+  "description": "mcp server for twilio sms programmable messages",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "test": "tsc && node dist/test-client.js"
+  },
+  "keywords": [
+    "mcp",
+    "twilio",
+    "sms",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "twilio": "^4.22.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.1",
+    "@types/node": "^20.11.24",
+    "@types/twilio": "^3.19.3",
+    "typescript": "^5.3.3",
+    "dotenv": "^16.5.0"
+  }
+}
