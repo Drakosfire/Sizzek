@@ -43,12 +43,12 @@ class TodoodleListManager {
     private lastId: number = 0;
 
     constructor() {
-        this.loadTodoodles().catch(error => {
+        this.load().catch(error => {
             console.error('Error loading todoodles:', error);
         });
     }
 
-    private async loadTodoodles(): Promise<void> {
+    private async load(): Promise<void> {
         try {
             console.error(`Loading todoodles from ${todosFilePath}`);
 
@@ -106,7 +106,7 @@ class TodoodleListManager {
         }
     }
 
-    private async saveTodoodles(): Promise<void> {
+    private async save(): Promise<void> {
         try {
             console.error(`Saving ${this.todoodles.length} todoodles to ${todosFilePath}`);
             await fs.writeFile(todosFilePath, JSON.stringify(this.todoodles, null, 2));
@@ -117,7 +117,7 @@ class TodoodleListManager {
         }
     }
 
-    async addTodoodle(text: string): Promise<TodoodleItem> {
+    async add(text: string): Promise<TodoodleItem> {
         this.lastId += 1;
         const todoodle: TodoodleItem = {
             id: this.lastId.toString(),
@@ -126,12 +126,12 @@ class TodoodleListManager {
             completed: false
         };
         this.todoodles.push(todoodle);
-        await this.saveTodoodles();
+        await this.save();
         console.error(`📝 Added new todoodle with ID ${todoodle.id}: "${todoodle.text}"`);
         return todoodle;
     }
 
-    async completeTodoodleById(id: string): Promise<TodoodleItem | null> {
+    async completeById(id: string): Promise<TodoodleItem | null> {
         const todoodle = this.todoodles.find(t => t.id === id);
         if (!todoodle || todoodle.completed) {
             return null;
@@ -141,33 +141,33 @@ class TodoodleListManager {
         todoodle.completed = true;
         todoodle.completedAt = now.toISOString();
         todoodle.timeToComplete = now.getTime() - new Date(todoodle.createdAt).getTime();
-        await this.saveTodoodles();
+        await this.save();
         return todoodle;
     }
 
-    getTodoodles(): TodoodleItem[] {
+    get(): TodoodleItem[] {
         return [...this.todoodles].sort((a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
     }
 
-    getTodayTodoodles(): TodoodleItem[] {
+    getToday(): TodoodleItem[] {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        return this.getTodoodles().filter(todoodle =>
+        return this.get().filter(todoodle =>
             new Date(todoodle.createdAt) >= today
         );
     }
 
-    getAllTodoodles(): TodoodleItem[] {
-        return this.getTodoodles();
+    getAll(): TodoodleItem[] {
+        return this.get();
     }
 
-    getIncompleteTodoodles(): TodoodleItem[] {
-        return this.getTodoodles().filter(todoodle => !todoodle.completed);
+    getIncomplete(): TodoodleItem[] {
+        return this.get().filter(todoodle => !todoodle.completed);
     }
 
-    searchTodoodles(query: string): TodoodleItem[] {
+    search(query: string): TodoodleItem[] {
         // Simple case-insensitive search
         const searchTerms = query.toLowerCase().split(/\s+/);
         return this.todoodles.filter(todoodle => {
@@ -176,21 +176,21 @@ class TodoodleListManager {
         });
     }
 
-    async completeTodoodleByText(text: string): Promise<TodoodleItem | null> {
-        const matches = this.searchTodoodles(text);
+    async completeByText(text: string): Promise<TodoodleItem | null> {
+        const matches = this.search(text);
         if (matches.length === 0) {
             return null;
         }
         // If multiple matches, complete the most recent one
         const todoodleToComplete = matches[0];
-        return this.completeTodoodleById(todoodleToComplete.id);
+        return this.completeById(todoodleToComplete.id);
     }
 
-    async deleteTodoodleById(id: string): Promise<boolean> {
+    async deleteById(id: string): Promise<boolean> {
         const initialLength = this.todoodles.length;
         this.todoodles = this.todoodles.filter(t => t.id !== id);
         if (this.todoodles.length !== initialLength) {
-            await this.saveTodoodles();
+            await this.save();
             return true;
         }
         return false;
@@ -214,7 +214,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: "add_todoodle",
+                name: "add",
                 description: "Add a new todoodle item to the list",
                 inputSchema: {
                     type: "object",
@@ -228,7 +228,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "get_today_todoodles",
+                name: "get_today",
                 description: "Get all todoodle items created today, ordered from newest to oldest",
                 inputSchema: {
                     type: "object",
@@ -236,7 +236,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "get_all_todoodles",
+                name: "get_all",
                 description: "Get all todoodle items, ordered from newest to oldest",
                 inputSchema: {
                     type: "object",
@@ -244,7 +244,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "complete_todoodle",
+                name: "complete",
                 description: "Mark a todoodle item as completed",
                 inputSchema: {
                     type: "object",
@@ -258,7 +258,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "get_incomplete_todoodles",
+                name: "get_incomplete",
                 description: "Get all incomplete todoodle items, ordered from newest to oldest",
                 inputSchema: {
                     type: "object",
@@ -266,7 +266,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "search_todoodles",
+                name: "search",
                 description: "Search for todoodles by text content",
                 inputSchema: {
                     type: "object",
@@ -280,7 +280,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "complete_todoodle_by_text",
+                name: "complete_by_text",
                 description: "Mark a todoodle as completed by searching for its text content",
                 inputSchema: {
                     type: "object",
@@ -294,7 +294,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "delete_todoodle",
+                name: "delete",
                 description: "Delete a todoodle by its ID",
                 inputSchema: {
                     type: "object",
@@ -320,16 +320,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     switch (name) {
-        case "add_todoodle":
-            const todoodle = await todoodleManager.addTodoodle(args.text as string);
+        case "add":
+            const todoodle = await todoodleManager.add(args.text as string);
             return {
                 content: [{
                     type: "text",
                     text: `📝 Added todoodle: "${todoodle.text}" (created at ${new Date(todoodle.createdAt).toLocaleString()})`
                 }]
             };
-        case "get_today_todoodles":
-            const todayTodoodles = todoodleManager.getTodayTodoodles();
+        case "get_today":
+            const todayTodoodles = todoodleManager.getToday();
             if (todayTodoodles.length === 0) {
                 return {
                     content: [{
@@ -342,7 +342,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const status = todoodle.completed
                     ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
                     : "⏳ Pending";
-                return `- ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+                return `- ID: ${todoodle.id}, ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
             }).join('\n');
             return {
                 content: [{
@@ -350,8 +350,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `📅 Today's todoodles:\n${todaySummary}`
                 }]
             };
-        case "get_all_todoodles":
-            const allTodoodles = todoodleManager.getAllTodoodles();
+        case "get_all":
+            const allTodoodles = todoodleManager.getAll();
             if (allTodoodles.length === 0) {
                 return {
                     content: [{
@@ -364,7 +364,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const status = todoodle.completed
                     ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
                     : "⏳ Pending";
-                return `- ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+                return `- ID: ${todoodle.id}, ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
             }).join('\n');
             return {
                 content: [{
@@ -372,8 +372,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `📋 All todoodles:\n${allSummary}`
                 }]
             };
-        case "complete_todoodle":
-            const completedTodoodleById = await todoodleManager.completeTodoodleById(args.id as string);
+        case "complete":
+            const completedTodoodleById = await todoodleManager.completeById(args.id as string);
             if (!completedTodoodleById) {
                 return {
                     content: [{
@@ -388,8 +388,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `🎉 Completed todoodle: "${completedTodoodleById.text}" (ID: ${completedTodoodleById.id}, took ${Math.round(completedTodoodleById.timeToComplete! / 1000 / 60)} minutes)`
                 }]
             };
-        case "get_incomplete_todoodles":
-            const incompleteTodoodles = todoodleManager.getIncompleteTodoodles();
+        case "get_incomplete":
+            const incompleteTodoodles = todoodleManager.getIncomplete();
             if (incompleteTodoodles.length === 0) {
                 return {
                     content: [{
@@ -399,7 +399,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
             const incompleteSummary = incompleteTodoodles.map(todoodle =>
-                `- ${todoodle.text} (created at ${new Date(todoodle.createdAt).toLocaleString()})`
+                `- ID: ${todoodle.id}, ${todoodle.text} (created at ${new Date(todoodle.createdAt).toLocaleString()})`
             ).join('\n');
             return {
                 content: [{
@@ -407,8 +407,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `📝 Incomplete todoodles:\n${incompleteSummary}`
                 }]
             };
-        case "search_todoodles":
-            const matches = todoodleManager.searchTodoodles(args.query as string);
+        case "search":
+            const matches = todoodleManager.search(args.query as string);
             if (matches.length === 0) {
                 return {
                     content: [{
@@ -426,8 +426,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `🔍 Found ${matches.length} matching todoodles:\n${searchResults}`
                 }]
             };
-        case "complete_todoodle_by_text":
-            const completedTodoodleByText = await todoodleManager.completeTodoodleByText(args.text as string);
+        case "complete_by_text":
+            const completedTodoodleByText = await todoodleManager.completeByText(args.text as string);
             if (!completedTodoodleByText) {
                 return {
                     content: [{
@@ -442,20 +442,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     text: `🎉 Completed todoodle: "${completedTodoodleByText.text}" (ID: ${completedTodoodleByText.id}, took ${Math.round(completedTodoodleByText.timeToComplete! / 1000 / 60)} minutes)`
                 }]
             };
-        case "delete_todoodle":
-            const deleted = await todoodleManager.deleteTodoodleById(args.id as string);
+        case "delete":
+            const deleted = await todoodleManager.deleteById(args.id as string);
             if (!deleted) {
                 return {
                     content: [{
                         type: "text",
-                        text: "❌ Todoodle not found"
+                        text: "🗑️ Todoodle deleted successfully (ID: " + args.id + ")"
                     }]
                 };
             }
             return {
                 content: [{
                     type: "text",
-                    text: "🗑️ Todoodle deleted successfully"
+                    text: "🗑️ Todoodle deleted successfully (ID: " + args.id + ")"
                 }]
             };
         default:
