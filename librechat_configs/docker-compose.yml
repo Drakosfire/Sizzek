@@ -32,6 +32,8 @@ services:
     image: mongo
     restart: always
     user: "${UID}:${GID}"
+    ports:
+      - "27017:27017"
     volumes:
       - ./data-node:/data/db
     command: mongod --noauth
@@ -40,6 +42,8 @@ services:
     image: getmeili/meilisearch:v1.12.3
     restart: always
     user: "${UID}:${GID}"
+    ports:
+      - "7700:7700"
     environment:
       - MEILI_HOST=http://meilisearch:7700
       - MEILI_NO_ANALYTICS=true
@@ -49,6 +53,8 @@ services:
   vectordb:
     container_name: vectordb
     image: ankane/pgvector:latest
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: mydatabase
       POSTGRES_USER: myuser
@@ -59,6 +65,8 @@ services:
   rag_api:
     container_name: rag_api
     image: ghcr.io/danny-avila/librechat-rag-api-dev-lite:latest
+    ports:
+      - "${RAG_PORT:-8000}:${RAG_PORT:-8000}"
     environment:
       - DB_HOST=vectordb
       - RAG_PORT=${RAG_PORT:-8000}

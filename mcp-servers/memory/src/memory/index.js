@@ -36,6 +36,32 @@ class KnowledgeGraphManager {
         }
     }
     async saveGraph(graph) {
+        // Create backup of existing file if it exists
+        try {
+            const backupDir = path.join(path.dirname(MEMORY_FILE_PATH), 'backups');
+            await fs.mkdir(backupDir, { recursive: true });
+
+            if (await fs.access(MEMORY_FILE_PATH).then(() => true).catch(() => false)) {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const backupPath = path.join(backupDir, `memory_${timestamp}.json`);
+                await fs.copyFile(MEMORY_FILE_PATH, backupPath);
+
+                // Keep only the last 5 backups
+                const backups = await fs.readdir(backupDir);
+                if (backups.length > 5) {
+                    const sortedBackups = backups
+                        .filter(f => f.startsWith('memory_'))
+                        .sort()
+                        .reverse();
+                    for (const oldBackup of sortedBackups.slice(5)) {
+                        await fs.unlink(path.join(backupDir, oldBackup));
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to create backup:', error);
+        }
+
         const lines = [
             ...graph.entities.map(e => JSON.stringify({ type: "entity", ...e })),
             ...graph.relations.map(r => JSON.stringify({ type: "relation", ...r })),
@@ -60,15 +86,40 @@ class KnowledgeGraphManager {
     }
     async addObservations(observations) {
         const graph = await this.loadGraph();
-        const results = observations.map(o => {
+        const results = [];
+        const entitiesToCreate = [];
+
+        // First pass: identify missing entities and prepare for creation
+        for (const o of observations) {
             const entity = graph.entities.find(e => e.name === o.entityName);
             if (!entity) {
-                throw new Error(`Entity with name ${o.entityName} not found`);
+                entitiesToCreate.push({
+                    name: o.entityName,
+                    entityType: "unknown", // Default type, can be made configurable if needed
+                    observations: []
+                });
             }
+        }
+
+        // Create any missing entities
+        if (entitiesToCreate.length > 0) {
+            await this.createEntities(entitiesToCreate);
+            // Reload graph to get the newly created entities
+            Object.assign(graph, await this.loadGraph());
+        }
+
+        // Second pass: add observations to all entities (now they all exist)
+        for (const o of observations) {
+            const entity = graph.entities.find(e => e.name === o.entityName);
             const newObservations = o.contents.filter(content => !entity.observations.includes(content));
             entity.observations.push(...newObservations);
-            return { entityName: o.entityName, addedObservations: newObservations };
-        });
+            results.push({
+                entityName: o.entityName,
+                addedObservations: newObservations,
+                entityCreated: entitiesToCreate.some(e => e.name === o.entityName)
+            });
+        }
+
         await this.saveGraph(graph);
         return results;
     }
