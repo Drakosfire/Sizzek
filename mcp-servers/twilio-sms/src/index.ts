@@ -10,6 +10,10 @@ import twilio from 'twilio';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import express, { Request, Response } from 'express';
+import bodyParser from 'body-parser';
+
+
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -115,7 +119,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 // Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
     const { name, arguments: args } = request.params;
 
     if (!args) {
@@ -241,4 +245,49 @@ async function main() {
 main().catch((error) => {
     console.error("Fatal error in main():", error);
     process.exit(1);
+});
+
+// --- Express server for receiving SMS from cloud server ---
+const app = express();
+const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
+
+
+app.use(bodyParser.json());
+
+interface SMSPayload {
+    from: string;
+    body: string;
+    [key: string]: any;
+}
+
+app.post('/api/receive-sms', ((req, res) => {
+    console.log('Received request at /api/receive-sms');
+    const authHeader = req.headers['authorization'];
+
+    if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
+        console.log('Unauthorized request: missing or invalid authorization header');
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const { from, body } = req.body as SMSPayload;
+    if (!from || !body) {
+        console.log('Bad request: missing required fields (from, body)');
+        res.status(400).json({ error: 'Missing required fields: from, body' });
+        return;
+    }
+
+    const receivedAt = new Date().toISOString();
+    console.log(`[${receivedAt}] SMS from ${from}: ${body}`);
+
+    res.status(200).json({
+        status: 'processed',
+        received_at: receivedAt,
+        message_id: `${from}-${Date.now()}`
+    });
+}) as express.RequestHandler);
+
+app.listen(PORT, () => {
+    console.log(`Express server listening on port ${PORT}`);
 });
