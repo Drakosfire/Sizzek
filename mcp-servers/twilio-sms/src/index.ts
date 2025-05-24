@@ -12,6 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
+import axios from 'axios';
 
 
 
@@ -261,7 +262,31 @@ interface SMSPayload {
     [key: string]: any;
 }
 
-app.post('/api/receive-sms', ((req, res) => {
+async function forwardToClient(conversationId: string, message: string, apiKey: string) {
+    const url = `http://localhost:3080/api/messages/${conversationId}`;
+    const payload = {
+        role: "external",
+        content: message
+    };
+    const headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+    };
+    try {
+        const response = await axios.post(url, payload, { headers });
+        console.log('Forwarded to Client:', response.data);
+        return response.data;
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            console.error('Error forwarding to Client:', error.response?.data || error.message);
+        } else {
+            console.error('Error forwarding to Client:', error);
+        }
+        throw error;
+    }
+}
+
+app.post('/api/receive-sms', async (req, res) => {
     console.log('Received request at /api/receive-sms');
     const authHeader = req.headers['authorization'];
 
@@ -271,23 +296,42 @@ app.post('/api/receive-sms', ((req, res) => {
         return;
     }
 
-    const { from, body } = req.body as SMSPayload;
+    const { from, body, conversationId } = req.body as SMSPayload & { conversationId?: string };
     if (!from || !body) {
         console.log('Bad request: missing required fields (from, body)');
         res.status(400).json({ error: 'Missing required fields: from, body' });
+        return;
+    }
+    if (!conversationId) {
+        console.log('Missing conversationId in request body');
+        res.status(400).json({ error: 'Missing conversationId' });
+        return;
+    }
+    const externalMessageApiKey = process.env.EXTERNAL_MESSAGE_API_KEY;
+    if (!externalMessageApiKey) {
+        console.log('Missing EXTERNAL_MESSAGE_API_KEY in environment');
+        res.status(500).json({ error: 'Server misconfiguration' });
         return;
     }
 
     const receivedAt = new Date().toISOString();
     console.log(`[${receivedAt}] SMS from ${from}: ${body}`);
 
+    try {
+        await forwardToClient(conversationId, body, externalMessageApiKey);
+    } catch (err) {
+        console.error('Error forwarding to client:', err);
+        res.status(500).json({ error: 'Failed to forward message' });
+        return;
+    }
+
     res.status(200).json({
         status: 'processed',
         received_at: receivedAt,
         message_id: `${from}-${Date.now()}`
     });
-}) as express.RequestHandler);
+});
 
 app.listen(PORT, () => {
-    console.log(`Express server listening on port ${PORT}`);
+    console.log(`MCP server listening on port ${PORT}`);
 });
