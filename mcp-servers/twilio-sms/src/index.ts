@@ -250,7 +250,7 @@ main().catch((error) => {
 
 // --- Express server for receiving SMS from cloud server ---
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3081;
 const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
 
 
