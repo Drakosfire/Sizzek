@@ -63,7 +63,7 @@ mcpServers:
     initTimeout: 10000
     env:
         # NODE_ENV: "production"
-        MEMORY_FILE_PATH: "/media/drakosfire/Shared/Projects/Sizzek/memory_files/memory.json"
+        MEMORY_FILE_PATH: "../Sizzek/memory_files/memory.json"
     stderr: inherit
 
   todoodles:
@@ -75,7 +75,7 @@ mcpServers:
     initTimeout: 10000
     env:
         # NODE_ENV: "production"
-        TODOS_FILE_PATH: "/media/drakosfire/Shared/Projects/Sizzek/memory_files/todoodles.json"
+        TODOS_FILE_PATH: "../Sizzek/memory_files/todoodles.json"
     stderr: inherit
 
   twilio-sms:

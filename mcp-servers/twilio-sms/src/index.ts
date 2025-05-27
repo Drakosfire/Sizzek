@@ -10,11 +10,7 @@ import twilio from 'twilio';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import express, { Request, Response } from 'express';
-import bodyParser from 'body-parser';
-import axios from 'axios';
-
-
+import { fork } from 'child_process';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -238,100 +234,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
 // Start the server
 async function main() {
+    // Start the SMS server as a child process
+    const smsServerPath = path.join(__dirname, '..', 'dist', 'sms-server.js');
+    console.error('Starting SMS server from:', smsServerPath);
+
+    const smsServer = fork(smsServerPath, [], {
+        stdio: 'inherit',
+        env: process.env
+    });
+
+    smsServer.on('error', (error) => {
+        console.error('SMS Server error:', error);
+    });
+
+    smsServer.on('exit', (code) => {
+        console.error(`SMS Server exited with code ${code}`);
+    });
+
+    // Start the MCP server
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Twilio SMS MCP Server running on stdio");
+
+    // Handle process termination
+    process.on('SIGTERM', () => {
+        console.error('Received SIGTERM signal');
+        smsServer.kill();
+        process.exit(0);
+    });
+
+    process.on('SIGINT', () => {
+        console.error('Received SIGINT signal');
+        smsServer.kill();
+        process.exit(0);
+    });
 }
 
 main().catch((error) => {
     console.error("Fatal error in main():", error);
     process.exit(1);
-});
-
-// --- Express server for receiving SMS from cloud server ---
-const app = express();
-const PORT = process.env.PORT || 3081;
-const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
-
-
-app.use(bodyParser.json());
-
-interface SMSPayload {
-    from: string;
-    body: string;
-    [key: string]: any;
-}
-
-async function forwardToClient(conversationId: string, message: string, apiKey: string) {
-    const url = `http://localhost:3080/api/messages/${conversationId}`;
-    const payload = {
-        role: "external",
-        content: message
-    };
-    const headers = {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey
-    };
-    try {
-        const response = await axios.post(url, payload, { headers });
-        console.log('Forwarded to Client:', response.data);
-        return response.data;
-    } catch (error) {
-        if (axios.isAxiosError(error)) {
-            console.error('Error forwarding to Client:', error.response?.data || error.message);
-        } else {
-            console.error('Error forwarding to Client:', error);
-        }
-        throw error;
-    }
-}
-
-app.post('/api/receive-sms', async (req, res) => {
-    console.log('Received request at /api/receive-sms');
-    const authHeader = req.headers['authorization'];
-
-    if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
-        console.log('Unauthorized request: missing or invalid authorization header');
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-    }
-
-    const { from, body, conversationId } = req.body as SMSPayload & { conversationId?: string };
-    if (!from || !body) {
-        console.log('Bad request: missing required fields (from, body)');
-        res.status(400).json({ error: 'Missing required fields: from, body' });
-        return;
-    }
-    if (!conversationId) {
-        console.log('Missing conversationId in request body');
-        res.status(400).json({ error: 'Missing conversationId' });
-        return;
-    }
-    const externalMessageApiKey = process.env.EXTERNAL_MESSAGE_API_KEY;
-    if (!externalMessageApiKey) {
-        console.log('Missing EXTERNAL_MESSAGE_API_KEY in environment');
-        res.status(500).json({ error: 'Server misconfiguration' });
-        return;
-    }
-
-    const receivedAt = new Date().toISOString();
-    console.log(`[${receivedAt}] SMS from ${from}: ${body}`);
-
-    try {
-        await forwardToClient(conversationId, body, externalMessageApiKey);
-    } catch (err) {
-        console.error('Error forwarding to client:', err);
-        res.status(500).json({ error: 'Failed to forward message' });
-        return;
-    }
-
-    res.status(200).json({
-        status: 'processed',
-        received_at: receivedAt,
-        message_id: `${from}-${Date.now()}`
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`MCP server listening on port ${PORT}`);
 });
