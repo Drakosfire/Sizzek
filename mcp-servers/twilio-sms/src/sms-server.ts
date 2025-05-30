@@ -4,6 +4,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +31,10 @@ app.use(bodyParser.json());
 interface SMSPayload {
     from: string;
     body: string;
+    metadata?: {
+        conversationId?: string;
+        [key: string]: any;
+    };
     [key: string]: any;
 }
 
@@ -37,11 +42,13 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
     const url = `http://localhost:3080/api/messages/${conversationId}`;
     const payload = {
         role: "external",
-        content: message
+        content: message,
+        isStream: false  // Explicitly tell the server we don't want streaming
     };
     const headers = {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey
+        'x-api-key': apiKey,
+        'Accept': 'application/json'
     };
     try {
         console.error('[SMS-SERVER] Forwarding message to client:', {
@@ -49,7 +56,26 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
             conversationId,
             messageLength: message.length
         });
-        const response = await axios.post(url, payload, { headers });
+        const response = await axios.post(url, payload, {
+            headers,
+            validateStatus: (status) => status < 500  // Accept any non-500 response
+        });
+
+        // Check if we got HTML back (indicating SSE attempt)
+        if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+            console.error('[SMS-SERVER] Received HTML response, retrying with different headers');
+            // Retry with different headers to force JSON response
+            const jsonResponse = await axios.post(url, payload, {
+                headers: {
+                    ...headers,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            console.error('[SMS-SERVER] Successfully forwarded to Client:', jsonResponse.data);
+            return jsonResponse.data;
+        }
+
         console.error('[SMS-SERVER] Successfully forwarded to Client:', response.data);
         return response.data;
     } catch (error) {
@@ -79,23 +105,22 @@ app.post('/api/receive-sms', async (req, res) => {
         return;
     }
 
-    const { from, body, conversationId } = req.body as SMSPayload & { conversationId?: string };
+    const { from, body, metadata } = req.body as SMSPayload;
     if (!from || !body) {
         console.error('[SMS-SERVER] Bad request: missing required fields', { from, body });
         res.status(400).json({ error: 'Missing required fields: from, body' });
         return;
     }
-    if (!conversationId) {
-        console.error('[SMS-SERVER] Missing conversationId in request body');
-        res.status(400).json({ error: 'Missing conversationId' });
-        return;
-    }
+
     const externalMessageApiKey = process.env.EXTERNAL_MESSAGE_API_KEY;
     if (!externalMessageApiKey) {
         console.error('[SMS-SERVER] Missing EXTERNAL_MESSAGE_API_KEY in environment');
         res.status(500).json({ error: 'Server misconfiguration' });
         return;
     }
+
+    // Use existing conversation ID from metadata if available, otherwise generate one
+    const conversationId = metadata?.conversationId || ""
 
     const receivedAt = new Date().toISOString();
     console.error(`[SMS-SERVER] === Message Details ===`);
@@ -116,7 +141,9 @@ app.post('/api/receive-sms', async (req, res) => {
     res.status(200).json({
         status: 'processed',
         received_at: receivedAt,
-        message_id: `${from}-${Date.now()}`
+        message_id: `${from}-${Date.now()}`,
+        conversation_id: conversationId,
+        is_generated_id: false
     });
 });
 
