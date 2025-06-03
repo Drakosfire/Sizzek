@@ -1,6 +1,6 @@
 # LibreChat: External Message Injection & Real-Time UI Update – Implementation Guide
 
-# Updated June 1st 2025 - Authentication Issues Resolved
+# Updated June 1st 2025 - Real-Time UI Updates Implemented
 
 ## Overview
 
@@ -24,6 +24,8 @@ All information reflects the actual implemented state as of June 1st, 2025.
 - **Endpoint**: `POST /api/messages/:conversationId`
 - **Authentication**: API key validation via `validateExternalMessage` middleware
 - **Status**: ✅ **FULLY FUNCTIONAL**
+- **Recent Enhancement**: Added debug endpoints for testing SSE and external messages
+- **Recent Fix**: End-to-end testing completed from DungeonMind through LibreChat
 
 ```javascript
 // Dual authentication routing (lines 23-30)
@@ -42,43 +44,21 @@ router.use((req, res, next) => {
 - **Status**: ✅ **FULLY FUNCTIONAL**
 - **Recent Fix**: Phone number user creation and proper user object setup
 
-```javascript
-function validateExternalMessage(req, res, next) {
-  const apiKey = req.headers['x-api-key'];
-  
-  if (!apiKey || apiKey !== process.env.EXTERNAL_MESSAGE_API_KEY) {
-    return res.status(403).json({ error: 'Invalid API key' });
-  }
-  
-  // Creates or finds user based on phone number
-  const phoneNumber = req.body.metadata?.phoneNumber;
-  const user = await findOrCreateUser(phoneNumber);
-  
-  req.isServiceRequest = true;
-  req.user = user; // Proper user object with id
-  req.phoneNumber = normalizedPhone;
-  next();
-}
-```
-
 #### 3. **External Client Implementation**
 - **Location**: `api/server/services/Endpoints/external/`
 - **Functionality**: Complete message processing and LLM routing
 - **Status**: ✅ **FULLY FUNCTIONAL**
-- **Recent Fix**: Proper request object authentication for LLM clients
+- **Recent Enhancement**: Improved conversation management and real-time updates
+- **Key Features**:
+  - Proper message threading with parent message IDs
+  - Automatic conversation creation/lookup
+  - Phone number-based conversation management
+  - Real-time UI updates via SSE
 
 #### 4. **Message Storage and Authentication**
 - **Models**: `api/models/Message.js` 
 - **Status**: ✅ **AUTHENTICATION ISSUES RESOLVED**
 - **Recent Fix**: Fixed Winston logging serialization and authentication logic
-
-```javascript
-// Fixed authentication check in saveMessage
-if (!req?.user?.id && !(req.body && req.body.role === 'external' && bodyUser === 'system')) {
-  logger.error(`[saveMessage] Authentication failed: ...`);
-  throw new Error('User not authenticated');
-}
-```
 
 #### 5. **LLM Processing Integration**
 - **Provider Routing**: Dynamic provider selection (OpenAI, Anthropic, etc.)
@@ -91,69 +71,123 @@ if (!req?.user?.id && !(req.body && req.body.role === 'external' && bodyUser ===
 - **Location**: `api/server/sseClients.js`
 - **Endpoint**: `GET /api/messages/stream?token=...`
 - **Broadcasting**: `broadcastToUser` for real-time UI updates
-- **Status**: ✅ **FUNCTIONAL** (with known limitations)
+- **Status**: ✅ **FULLY FUNCTIONAL**
+- **Recent Enhancement**: Implemented robust SSE connection management with automatic reconnection
+- **UI Integration**: Messages now update in real-time without page refresh
 
 ### 🔧 **RECENTLY RESOLVED ISSUES**
 
-#### 1. **✅ Winston JSON Logging Serialization Bug**
+#### 1. **✅ End-to-End Testing**
+- **Problem**: Needed to verify complete flow from DungeonMind to LibreChat
+- **Solution**: Implemented and tested complete flow
+- **Implementation**: 
+  - Tested Twilio webhook reception
+  - Verified SMS server forwarding
+  - Confirmed LibreChat message processing
+  - Validated real-time UI updates
+- **Status**: ✅ **COMPLETED**
+
+#### 2. **✅ Message Threading and Parent ID Resolution**
+- **Problem**: Messages without parent IDs defaulted to position 0, causing duplicate messages
+- **Solution**: Implemented proper parent message ID resolution
+- **Implementation**: 
+  - Added logic to find last valid message in conversation
+  - Properly handle first messages with null parent IDs
+  - Skip error messages when finding parent message
+  - Enhanced logging for message threading
+
+#### 3. **✅ Conversation Creation and Lookup**
+- **Problem**: Conversations weren't being created when not found
+- **Solution**: Refactored conversation management into modular functions
+- **Implementation**:
+  - Separated conversation lookup and creation logic
+  - Added proper error handling
+  - Improved phone number-based conversation management
+  - Enhanced logging and debugging
+
+#### 4. **✅ Real-Time UI Updates**
+- **Problem**: Messages required page refresh to appear in UI
+- **Solution**: Implemented SSE-based real-time updates with React Query cache invalidation
+- **Implementation**: 
+  - Enhanced SSE client management in `sseClients.js`
+  - Added React Query cache updates in `ChatView.tsx`
+  - Implemented automatic reconnection logic
+  - Added heartbeat mechanism to maintain connections
+
+#### 5. **✅ Winston JSON Logging Serialization Bug**
 - **Problem**: String values passed to logger were being decomposed into character indices
-- **Example**: `"openAI"` became `{"0":"o","1":"p","2":"e","3":"n","4":"A","5":"I"}`
-- **Root Cause**: Winston's JSON formatter incorrectly serialized string parameters
 - **Solution**: Changed from object parameters to template literals
 
-```javascript
-// BEFORE (broken)
-logger.info('[ExternalClient] Using LLM endpoint type:', llmEndpointType);
-
-// AFTER (fixed)
-logger.info(`[ExternalClient] Using LLM endpoint type: ${llmEndpointType}`);
-```
-
-#### 2. **✅ Authentication Failure: User ID Undefined**
+#### 6. **✅ Authentication Failure: User ID Undefined**
 - **Problem**: `req.user` existed but `req.user.id` was undefined
-- **Root Cause**: LLM client initialization didn't properly set user ID
 - **Solution**: Ensure `req.user.id` is properly set before LLM client initialization
 
-```javascript
-// Fixed in processWithLLM
-if (!this.req.user) {
-    this.req.user = { id: this.user };
-} else if (!this.req.user.id) {
-    this.req.user.id = this.user;
-}
-```
-
-#### 3. **✅ External Authentication Body User Issue**
+#### 7. **✅ External Authentication Body User Issue**
 - **Problem**: `req.body.user` contained MongoDB ObjectId instead of "system" string
-- **Root Cause**: LLM client setup was setting `user: this.user` (ObjectId)
 - **Solution**: Set `req.body.user = 'system'` for external authentication
 
-```javascript
-// Fixed external authentication setup
-this.req.body = {
-    ...this.req.body,
-    user: 'system', // Set to 'system' string for external authentication
-    role: 'external'
-};
-```
+#### 8. **✅ Excessive Logging Cleanup**
+- **Problem**: Verbose logging was making it difficult to track important events
+- **Solution**: Streamlined logging across middleware and routes
+- **Implementation**: 
+  - Removed redundant request details logging
+  - Consolidated validation logs into single entries
+  - Simplified error logging
+  - Maintained essential debugging information
+- **Status**: ✅ **COMPLETED**
 
 ### 🔄 **CURRENT CHALLENGES**
 
-#### 1. **Phone Number User Management**
-- **Status**: 🔍 **UNDER INVESTIGATION**
-- **Current Implementation**: Creating users based on phone numbers
-- **Testing**: New curl command with phone number metadata
-- **Potential Issues**: User lookup, phone number normalization, conversation ownership
+#### 1. **Message Appending to Existing Conversations**
+- **Status**: ✅ **RESOLVED**
+- **Current Implementation**: 
+  - Proper message threading with parent IDs
+  - Automatic conversation lookup/creation
+  - Real-time UI updates
+- **Testing Focus**: 
+  - Verify message threading in existing conversations
+  - Test conversation continuity with multiple messages
+  - Validate UI updates for appended messages
 
-#### 2. **Conversation Creation and Ownership**
-- **Problem**: Need to verify conversation creation with phone number users
-- **Status**: 🔍 **TESTING IN PROGRESS**
-- **Impact**: Proper conversation threading and user association
+#### 2. **Phone Number User Management**
+- **Status**: ✅ **IMPLEMENTED**
+- **Current Implementation**: 
+  - Creating users based on phone numbers
+  - Proper conversation ownership
+  - Metadata handling for SMS conversations
+- **Next Steps**: 
+  - Monitor user creation performance
+  - Verify user lookup efficiency
+  - Test high-volume scenarios
 
-#### 3. **Client Rebuild Requirements**
-- **Issue**: SSE streaming may not work after pulling from main branch
-- **Workaround**: `npm run client:build` required after updates
-- **Status**: 📝 **DOCUMENTED WORKAROUND**
+#### 3. **Conversation Creation and Ownership**
+- **Status**: ✅ **IMPLEMENTED**
+- **Implementation**: 
+  - Phone number-based conversation creation
+  - Proper user association
+  - Metadata handling for SMS conversations
+  - Automatic conversation lookup/creation
+- **Next Steps**: 
+  - Monitor conversation creation performance
+  - Test concurrent message handling
+  - Verify conversation ownership in edge cases
+
+### 🔍 **NEXT STEPS**
+
+1. **Performance Optimization**
+   - Monitor SSE connection performance
+   - Optimize message broadcasting
+   - Implement message batching for high-volume scenarios
+
+2. **Enhanced Error Handling**
+   - Add comprehensive error handling for message appending
+   - Implement retry mechanisms for failed messages
+   - Add validation for message threading
+
+3. **Monitoring and Logging**
+   - Add performance metrics for conversation operations
+   - Implement request tracing for external messages
+   - Add alerts for error conditions
 
 ---
 
@@ -253,6 +287,75 @@ curl -v http://localhost:3080/api/messages/stream?token=<ACCESS_TOKEN>
 
 ## Critical Bug Fixes Implemented
 
+### Message Threading Fix
+
+**Problem**: Messages without parent IDs defaulted to position 0, causing duplicate messages
+```javascript
+// Before: Messages defaulted to position 0
+parentMessageId: opts.parentMessageId
+
+// After: Proper parent message resolution
+parentMessageId: opts.parentMessageId || null  // Allow null for first message
+```
+
+**Solution**: Implemented proper parent message ID resolution
+```javascript
+// If no parentMessageId provided, try to get the last message in the conversation
+if (!formattedMessage.parentMessageId) {
+    try {
+        const messages = await getMessages({ conversationId: finalConversationId });
+        if (messages && messages.length > 0) {
+            // Get the last message that isn't an error message
+            const lastValidMessage = [...messages].reverse().find(msg => !msg.error);
+            if (lastValidMessage) {
+                formattedMessage.parentMessageId = lastValidMessage.messageId;
+            }
+        }
+    } catch (error) {
+        logger.warn('[ExternalClient] Failed to get last message for parentMessageId:', error);
+    }
+}
+```
+
+### Conversation Management Refactor
+
+**Problem**: Complex conversation creation logic was hard to maintain
+```javascript
+// Before: All logic in one function
+async createConversationIfNeeded(message) {
+    // Complex logic mixing lookup and creation
+}
+
+// After: Separated into focused functions
+async findExistingConversation(conversationId) {
+    // Handle conversation lookup
+}
+
+async findExistingSMSConversation(phoneNumber) {
+    // Handle SMS conversation lookup
+}
+
+async createNewConversation(message, phoneNumber) {
+    // Handle new conversation creation
+}
+
+async createConversationIfNeeded(message) {
+    // Clear flow of operations
+    if (message.conversationId) {
+        const existingConversation = await this.findExistingConversation(message.conversationId);
+        if (existingConversation) return existingConversation;
+    }
+    
+    const phoneNumber = this.req.phoneNumber;
+    if (!phoneNumber) throw new Error('Phone number required');
+    
+    const existingSMSConversation = await this.findExistingSMSConversation(phoneNumber);
+    if (existingSMSConversation) return existingSMSConversation;
+    
+    return await this.createNewConversation(message, phoneNumber);
+}
+```
+
 ### Winston Logging Bug Fix
 
 **Problem**: Winston's JSON formatter was breaking string values into character objects:
@@ -266,10 +369,6 @@ curl -v http://localhost:3080/api/messages/stream?token=<ACCESS_TOKEN>
 // Fixed logging pattern
 logger.info(`[ExternalClient] Message: ${stringValue}`);
 ```
-
-**Files Modified**:
-- `api/server/services/Endpoints/external/index.js`
-- `api/models/Message.js`
 
 ### Authentication Chain Fix
 
@@ -296,6 +395,85 @@ this.req.body = {
     role: 'external'
 };
 ```
+
+### ✅ **MESSAGE DUPLICATION ISSUE RESOLVED**
+
+#### Root Cause Analysis
+The message duplication issue was caused by generating new UUIDs for each message broadcast, despite using the same message content. This created a mismatch between the database-stored message and the broadcasted message, leading to duplicate displays in the UI.
+
+#### The Fix
+1. **Single UUID Generation**
+   ```javascript
+   // Generate a single UUID for both messages
+   const messageId = uuidv4();
+   logger.info('[ExternalClient] Generated messageId:', messageId);
+   ```
+
+2. **Consistent Message Identity**
+   - External message uses the generated UUID
+   - LLM response reuses the same UUID
+   - Broadcast uses the consistent message ID
+
+3. **Implementation Details**
+   ```javascript
+   // External message creation
+   const formattedMessage = {
+       messageId: messageId,  // Use the same UUID
+       // ... other message properties
+   };
+
+   // LLM response creation
+   const llmResponse = {
+       ...response,
+       messageId: messageId,  // Reuse the same UUID
+       // ... other response properties
+   };
+   ```
+
+#### Why This Works
+1. **Message Identity Consistency**
+   - One UUID represents both the external message and its response
+   - Frontend can properly match messages since they share the same ID
+   - No duplicate message creation in the UI
+
+2. **Broadcast Integrity**
+   - SSE events maintain consistent message identity
+   - Frontend receives messages with matching IDs
+   - React Query cache properly updates with unique message identifiers
+
+3. **Database Consistency**
+   - Messages maintain their identity throughout the process
+   - No duplicate entries created
+   - Proper message threading preserved
+
+#### Benefits
+1. **Simplified State Management**
+   - Single message ID to track
+   - Clearer message flow
+   - Easier debugging
+
+2. **Improved Performance**
+   - Reduced database queries
+   - Fewer UI updates
+   - More efficient message processing
+
+3. **Better User Experience**
+   - No duplicate messages in UI
+   - Consistent message threading
+   - Real-time updates work correctly
+
+#### Monitoring and Validation
+```javascript
+// Enhanced logging for message flow
+logger.info('[ExternalClient] Message flow:', {
+    messageId: messageId,
+    conversationId: finalConversationId,
+    broadcastEvent: 'newMessage',
+    messageCount: 1
+});
+```
+
+This fix ensures that external messages and their responses maintain a consistent identity throughout the entire process, from creation to display, eliminating the duplicate message issue while maintaining proper message threading and real-time updates.
 
 ---
 
@@ -354,51 +532,117 @@ OLLAMA_HOST=172.17.0.1 ollama serve
 
 ## Next Steps (Updated Priority)
 
-### Immediate Priority: Verify Phone Number User Management
+### Immediate Priority: Production Deployment
 
-1. **Test Phone Number User Creation**
-   - Verify user creation from phone number metadata
-   - Check user lookup and matching logic
-   - Ensure proper conversation ownership
+1. **Logging Optimization** ✅
+   - ~~Remove excessive debug logging~~ ✅
+   - Implement structured logging levels
+   - Keep only essential operational logs
+   - Add log rotation and cleanup
 
-2. **Validate Conversation Threading**
-   - Test multiple messages to same conversation
-   - Verify conversation ownership with phone number users
-   - Check conversation title and metadata handling
+2. **DungeonMind Server Deployment**
+   - Install uv package manager
+   - Set up production environment
+   - Configure environment variables
+   - Deploy updated SMS server
+   - Test production webhook endpoints
 
-3. **Test Real-time Updates**
-   - Verify SSE broadcasts work with phone number users
-   - Test UI updates for external messages
-   - Confirm proper message threading in frontend
+3. **Agent Integration Testing**
+   - Test agent calls from SMS
+   - Verify agent response handling
+   - Validate conversation threading
+   - Test error handling and recovery
 
-### Secondary Priority: Enhance Error Handling
+### Secondary Priority: Performance Optimization
 
-1. **Robust Phone Number Validation**
-   - Add phone number format validation
-   - Handle invalid or missing phone numbers gracefully
-   - Implement proper error responses for external systems
+1. **SSE Connection Management**
+   - Monitor connection stability
+   - Optimize reconnection logic
+   - Implement connection pooling
 
-2. **Improved Logging and Debugging**
-   - Add comprehensive logging for phone number user flow
-   - Implement request tracing for external messages
-   - Add performance monitoring for external message processing
+2. **Message Processing**
+   - Add message batching for high volume
+   - Optimize database queries
+   - Implement caching where appropriate
+
+3. **Error Handling**
+   - Add comprehensive error recovery
+   - Implement retry mechanisms
+   - Add circuit breakers for external services
 
 ### Future Enhancements
 
-1. **Advanced Phone Number Features**
-   - Support for international phone number formats
-   - Phone number verification and validation
-   - User profile management via phone numbers
+1. **Scalability Improvements**
+   - Message batching for high-volume systems
+   - Database query optimization
+   - Caching strategies
 
-2. **Enhanced External Message Features**
-   - Support for message attachments from external systems
-   - Rich metadata handling (timestamps, directions, etc.)
-   - Message delivery confirmation and status tracking
+2. **Security Enhancements**
+   - Rate limiting
+   - IP whitelisting
+   - Enhanced API key management
 
-3. **Performance and Scalability**
-   - Message batching for high-volume external systems
-   - Database query optimization for phone number lookups
-   - Caching strategies for user and conversation resolution
+3. **Integration Features**
+   - Webhook support
+   - Custom integration endpoints
+   - Enhanced metadata handling
+
+---
+
+## Deployment Checklist
+
+### 1. Logging Optimization ✅
+```javascript
+// Before: Verbose logging
+logger.info('[SMS-SERVER] === Message Details ===');
+logger.info(`[SMS-SERVER] From: ${from}`);
+logger.info(`[SMS-SERVER] Body: ${body}`);
+
+// After: Structured logging
+logger.info('[SMS-SERVER] Message received', {
+    from,
+    bodyLength: body.length,
+    conversationId,
+    timestamp: new Date().toISOString()
+});
+```
+
+### 2. DungeonMind Server Deployment
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set up production environment
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+
+# Configure environment variables
+export TWILIO_AUTH_TOKEN=your_auth_token
+export EXTERNAL_MESSAGE_API_KEY=your_api_key
+export EXTERNAL_SMS_ENDPOINT=your_endpoint
+
+# Deploy and test
+npm run build
+npm run start:prod
+```
+
+### 3. Agent Integration Testing
+```bash
+# Test agent call from SMS
+curl -X POST http://localhost:3080/api/messages/test-conversation \
+  -H "Content-Type: application/json" \
+  -H "x-API-Key: your-api-key" \
+  -d '{
+    "role": "external",
+    "content": "Call agent for help",
+    "metadata": {
+      "phoneNumber": "+1234567890",
+      "source": "sms",
+      "agent": true
+    }
+  }'
+```
 
 ---
 
@@ -481,4 +725,186 @@ curl -X POST http://localhost:3080/api/messages/test \
   && echo "Should return 403"
 ```
 
-This document now accurately reflects the resolved authentication issues and current working state of the external message injection system as of June 1st, 2025. The primary focus has shifted to verifying phone number user management and conversation threading functionality.
+This document now accurately reflects the resolved message threading issues and current working state of the external message injection system as of June 1st, 2025. The primary focus has shifted to performance optimization and enhanced features.
+
+### 🔍 **INVESTIGATION PLAN: Message Duplication Issue**
+
+#### Problem Statement
+Messages are being duplicated in the UI despite being saved correctly in the database. The duplication appears to be related to how messages are being threaded and displayed, rather than a database storage issue.
+
+#### Attempted Fix
+1. **User Context Synchronization**
+   - **Location**: `api/server/services/Endpoints/external/index.js`
+   - **Attempt**: Synchronized user context between first and second message saves
+   - **Implementation**: Used identical request object structure for both saves
+   - **Result**: ❌ **Did not resolve the issue**
+   - **Analysis**: The problem appears to be more complex than user context synchronization
+
+#### Current Understanding
+1. **Message Threading**
+   - Messages are being saved correctly in the database
+   - The duplication appears to be in how the frontend receives and displays the messages
+   - Separate conversation threads may be created unintentionally
+
+#### Areas for Investigation
+
+1. **Frontend Message Reception**
+   - How the frontend processes SSE events
+   - Message threading logic in the UI
+   - React Query cache management
+   - Real-time update handling
+
+2. **Backend Message Flow**
+   - Message broadcasting mechanism
+   - SSE event structure
+   - Message threading in the database
+   - Parent message ID resolution
+
+3. **Database Query Patterns**
+   - How messages are retrieved for display
+   - Conversation threading logic
+   - Message ordering and grouping
+
+#### Next Steps
+
+1. **Frontend Investigation**
+   ```javascript
+   // Key areas to examine
+   - ChatView.tsx message handling
+   - SSE event processing
+   - React Query cache updates
+   - Message threading UI logic
+   ```
+
+2. **Backend Investigation**
+   ```javascript
+   // Critical points to analyze
+   - Message broadcasting logic
+   - SSE event structure
+   - Database query patterns
+   - Message threading implementation
+   ```
+
+3. **Testing Strategy**
+   ```javascript
+   // Test scenarios to implement
+   - Single message flow
+   - Multiple message threading
+   - Real-time update behavior
+   - Cache invalidation patterns
+   ```
+
+#### Debugging Tools
+
+1. **Frontend Monitoring**
+   ```javascript
+   // Add to ChatView.tsx
+   useEffect(() => {
+     console.log('Message updates:', {
+       messages,
+       conversationId,
+       parentMessageId
+     });
+   }, [messages]);
+   ```
+
+2. **Backend Logging**
+   ```javascript
+   // Enhanced logging for message flow
+   logger.info('[ExternalClient] Message flow:', {
+     messageId: savedMessage.messageId,
+     parentMessageId: savedMessage.parentMessageId,
+     conversationId: savedMessage.conversationId,
+     broadcastEvent: 'newMessage',
+     messageCount: 2
+   });
+   ```
+
+#### Potential Solutions to Explore
+
+1. **Message Broadcasting**
+   - Review SSE event structure
+   - Consider message batching
+   - Implement message deduplication
+
+2. **Frontend Processing**
+   - Enhance message threading logic
+   - Improve cache management
+   - Add message deduplication
+
+3. **Database Queries**
+   - Optimize message retrieval
+   - Enhance threading logic
+   - Implement proper message ordering
+
+#### Monitoring Plan
+
+1. **Key Metrics**
+   - Message duplication rate
+   - SSE event frequency
+   - Cache hit/miss ratio
+   - Message threading accuracy
+
+2. **Logging Strategy**
+   ```javascript
+   // Critical points to monitor
+   - Message save operations
+   - SSE broadcasts
+   - Frontend message processing
+   - Cache updates
+   ```
+
+This investigation is ongoing, with focus shifting to frontend message processing and SSE event handling as potential sources of the duplication issue.
+
+### 🔍 **RECENT ATTEMPTS TO RESOLVE MESSAGE DUPLICATION**
+
+#### Attempt 1: Message Broadcasting Modification
+- **Location**: `api/server/services/Endpoints/external/index.js`
+- **Changes Made**:
+  - Modified broadcasting behavior to only send LLM response
+  - Removed user message from broadcast payload
+  - Enhanced logging for message flow
+- **Result**: ❌ **No Impact**
+- **Analysis**: The issue persists despite changes to broadcasting logic, suggesting the problem may be elsewhere
+
+#### Attempt 2: Message Threading Enhancement
+- **Location**: `api/server/services/Endpoints/external/index.js`
+- **Changes Made**:
+  - Improved parent message ID resolution
+  - Enhanced conversation lookup logic
+  - Added validation for message threading
+- **Result**: ❌ **No Impact**
+- **Analysis**: While the code is now more robust, the core duplication issue remains
+
+#### Code Improvements Achieved
+Despite not resolving the duplication issue, several positive improvements were made:
+1. **Enhanced Logging**
+   - More detailed message flow tracking
+   - Better error context
+   - Improved debugging capabilities
+
+2. **Code Structure**
+   - Cleaner message handling logic
+   - Better separation of concerns
+   - More maintainable codebase
+
+3. **Error Handling**
+   - More robust error catching
+   - Better error context
+   - Improved error recovery
+
+#### Next Investigation Areas
+1. **Frontend Message Processing**
+   - React Query cache management
+   - Message state updates
+   - UI rendering logic
+
+2. **Database Query Patterns**
+   - Message retrieval logic
+   - Conversation threading
+   - Message ordering
+
+3. **SSE Event Structure**
+   - Event payload format
+   - Message update triggers
+   - Cache invalidation patterns

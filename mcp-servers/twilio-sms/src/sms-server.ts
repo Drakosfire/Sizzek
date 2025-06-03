@@ -33,33 +33,50 @@ interface SMSPayload {
     body: string;
     metadata?: {
         conversationId?: string;
+        phoneNumber?: string;
         [key: string]: any;
     };
     [key: string]: any;
 }
 
-async function forwardToClient(conversationId: string, message: string, apiKey: string) {
+async function forwardToClient(conversationId: string, message: string, apiKey: string, phoneNumber: string, from: string) {
     const url = `http://localhost:3080/api/messages/${conversationId}`;
     const payload = {
         role: "external",
         content: message,
-        isStream: false  // Explicitly tell the server we don't want streaming
+        text: message,
+        from: from,
+        isStream: false,
+        metadata: {
+            phoneNumber: phoneNumber,
+            source: 'sms'
+        }
     };
+
+    console.error('[SMS-SERVER] === Forwarding to LibreChat ===');
+    console.error('[SMS-SERVER] URL:', url);
+    console.error('[SMS-SERVER] Headers:', {
+        'Content-Type': 'application/json',
+        'x-api-key': '***REDACTED***',
+        'Accept': 'application/json'
+    });
+    console.error('[SMS-SERVER] Payload:', JSON.stringify(payload, null, 2));
+
     const headers = {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'Accept': 'application/json'
     };
     try {
-        console.error('[SMS-SERVER] Forwarding message to client:', {
-            url,
-            conversationId,
-            messageLength: message.length
-        });
+        console.error('[SMS-SERVER] Sending request to LibreChat...');
         const response = await axios.post(url, payload, {
             headers,
             validateStatus: (status) => status < 500  // Accept any non-500 response
         });
+
+        console.error('[SMS-SERVER] Response Status:', response.status);
+        console.error('[SMS-SERVER] Response Headers:', JSON.stringify(response.headers, null, 2));
+        console.error('[SMS-SERVER] Response Data:', JSON.stringify(response.data, null, 2));
 
         // Check if we got HTML back (indicating SSE attempt)
         if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
@@ -72,18 +89,20 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             });
-            console.error('[SMS-SERVER] Successfully forwarded to Client:', jsonResponse.data);
+            console.error('[SMS-SERVER] Retry Response:', JSON.stringify(jsonResponse.data, null, 2));
             return jsonResponse.data;
         }
 
-        console.error('[SMS-SERVER] Successfully forwarded to Client:', response.data);
         return response.data;
     } catch (error) {
         if (axios.isAxiosError(error)) {
             console.error('[SMS-SERVER] Error forwarding to Client:', {
                 status: error.response?.status,
+                statusText: error.response?.statusText,
+                headers: error.response?.headers,
                 data: error.response?.data,
-                message: error.message
+                message: error.message,
+                code: error.code
             });
         } else {
             console.error('[SMS-SERVER] Error forwarding to Client:', error);
@@ -119,18 +138,22 @@ app.post('/api/receive-sms', async (req, res) => {
         return;
     }
 
-    // Use existing conversation ID from metadata if available, otherwise generate one
-    const conversationId = metadata?.conversationId || ""
+    // Generate a new conversation ID if one isn't provided in metadata
+    const conversationId = metadata?.conversationId || crypto.randomUUID();
+    const isGeneratedId = !metadata?.conversationId;
+    const phoneNumber = metadata?.phoneNumber || from;  // Use metadata phone number or fallback to from
 
     const receivedAt = new Date().toISOString();
     console.error(`[SMS-SERVER] === Message Details ===`);
     console.error(`[SMS-SERVER] From: ${from}`);
     console.error(`[SMS-SERVER] Body: ${body}`);
+    console.error(`[SMS-SERVER] Phone Number: ${phoneNumber}`);
     console.error(`[SMS-SERVER] Conversation ID: ${conversationId}`);
+    console.error(`[SMS-SERVER] Is Generated ID: ${isGeneratedId}`);
     console.error(`[SMS-SERVER] Received at: ${receivedAt}`);
 
     try {
-        await forwardToClient(conversationId, body, externalMessageApiKey);
+        await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
         console.error('[SMS-SERVER] Successfully processed and forwarded message');
     } catch (err) {
         console.error('[SMS-SERVER] Error forwarding to client:', err);
@@ -143,7 +166,7 @@ app.post('/api/receive-sms', async (req, res) => {
         received_at: receivedAt,
         message_id: `${from}-${Date.now()}`,
         conversation_id: conversationId,
-        is_generated_id: false
+        is_generated_id: isGeneratedId
     });
 });
 
