@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import https from 'https';
+import fs from 'fs';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +20,30 @@ dotenv.config({ path: envPath });
 const app = express();
 const PORT = process.env.PORT || 3081;
 const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
+
+// SSL/TLS Configuration
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
+
+// Check if SSL certificates are configured
+if (!SSL_KEY_PATH || !SSL_CERT_PATH) {
+    console.error('[SMS-SERVER] SSL certificates not configured. Please set SSL_KEY_PATH and SSL_CERT_PATH environment variables.');
+    process.exit(1);
+}
+
+// Check if SSL certificates exist
+if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
+    console.error('[SMS-SERVER] SSL certificates not found. Please ensure the following files exist:');
+    console.error(`[SMS-SERVER] - Private Key: ${SSL_KEY_PATH}`);
+    console.error(`[SMS-SERVER] - Certificate: ${SSL_CERT_PATH}`);
+    process.exit(1);
+}
+
+// Create HTTPS options
+const httpsOptions = {
+    key: fs.readFileSync(SSL_KEY_PATH),
+    cert: fs.readFileSync(SSL_CERT_PATH)
+};
 
 // Add request logging middleware
 app.use((req, res, next) => {
@@ -170,12 +196,13 @@ app.post('/api/receive-sms', async (req, res) => {
     });
 });
 
-// Start the server immediately
-app.listen(PORT, () => {
-    console.error(`[SMS-SERVER] Server started and listening on port ${PORT}`);
+// Start the HTTPS server
+https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.error(`[SMS-SERVER] HTTPS Server started and listening on port ${PORT}`);
     console.error('[SMS-SERVER] Environment:', {
         port: PORT,
         apiKeyPresent: !!API_KEY,
-        externalApiKeyPresent: !!process.env.EXTERNAL_MESSAGE_API_KEY
+        externalApiKeyPresent: !!process.env.EXTERNAL_MESSAGE_API_KEY,
+        sslEnabled: true
     });
 }); 
