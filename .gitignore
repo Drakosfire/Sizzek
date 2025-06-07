@@ -74,3 +74,4 @@ models/*
 
 
 signal-desktop-keyring.gpg
+credentials/
