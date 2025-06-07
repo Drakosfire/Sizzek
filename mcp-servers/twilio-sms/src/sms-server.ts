@@ -1,3 +1,15 @@
+/**
+ * Twilio SMS Server with LibreChat Agent Integration
+ * 
+ * Required Environment Variables:
+ * - EXTERNAL_MESSAGE_API_KEY: API key for LibreChat external messages
+ * - SSL_KEY_PATH: Path to SSL private key file
+ * - SSL_CERT_PATH: Path to SSL certificate file
+ * - LIBRECHAT_AGENT_ID: ID of the LibreChat agent to use (optional, defaults to example from docs)
+ * - LIBRECHAT_AGENT_MODEL: Model to use for the agent (optional, defaults to gpt-4o)
+ * - PORT: Server port (optional, defaults to 3081)
+ */
+
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
 import axios from 'axios';
@@ -21,29 +33,37 @@ const app = express();
 const PORT = process.env.PORT || 3081;
 const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
 
-// SSL/TLS Configuration
+// SSL/TLS Configuration (Optional)
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 
-// Check if SSL certificates are configured
-if (!SSL_KEY_PATH || !SSL_CERT_PATH) {
-    console.error('[SMS-SERVER] SSL certificates not configured. Please set SSL_KEY_PATH and SSL_CERT_PATH environment variables.');
-    process.exit(1);
+// Check if SSL certificates are configured and valid
+let httpsOptions = null;
+let sslEnabled = false;
+
+if (SSL_KEY_PATH && SSL_CERT_PATH) {
+    // Check if SSL certificates exist
+    if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+        httpsOptions = {
+            key: fs.readFileSync(SSL_KEY_PATH),
+            cert: fs.readFileSync(SSL_CERT_PATH)
+        };
+        sslEnabled = true;
+        console.error('[SMS-SERVER] SSL certificates found - HTTPS enabled');
+    } else {
+        console.error('[SMS-SERVER] SSL certificate paths provided but files not found:');
+        console.error(`[SMS-SERVER] - Private Key: ${SSL_KEY_PATH}`);
+        console.error(`[SMS-SERVER] - Certificate: ${SSL_CERT_PATH}`);
+        console.error('[SMS-SERVER] Running in HTTP-only mode');
+    }
+} else {
+    console.error('[SMS-SERVER] SSL certificates not configured - running in HTTP-only mode');
+    console.error('[SMS-SERVER] This is appropriate for Tailscale networks with end-to-end encryption');
 }
 
-// Check if SSL certificates exist
-if (!fs.existsSync(SSL_KEY_PATH) || !fs.existsSync(SSL_CERT_PATH)) {
-    console.error('[SMS-SERVER] SSL certificates not found. Please ensure the following files exist:');
-    console.error(`[SMS-SERVER] - Private Key: ${SSL_KEY_PATH}`);
-    console.error(`[SMS-SERVER] - Certificate: ${SSL_CERT_PATH}`);
-    process.exit(1);
-}
-
-// Create HTTPS options
-const httpsOptions = {
-    key: fs.readFileSync(SSL_KEY_PATH),
-    cert: fs.readFileSync(SSL_CERT_PATH)
-};
+// Agent Configuration
+const AGENT_ID = process.env.LIBRECHAT_AGENT_ID || 'agent_G5HmZ0jJtfPMXIykL81Nx'; // Default from docs
+const AGENT_MODEL = process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4o';
 
 // Add request logging middleware
 app.use((req, res, next) => {
@@ -65,22 +85,77 @@ interface SMSPayload {
     [key: string]: any;
 }
 
+// Helper function for time availability - always returns true since agents are available 24/7
+function currentDateANDTime(): string {
+    const now = new Date();
+    return now.toISOString(); // Agents are available 24/7
+}
+
+// Simple in-memory store for phone number to conversation ID mapping
+// In production, this should be replaced with a persistent store (Redis, DB, etc.)
+const phoneConversationMap = new Map<string, string>();
+
+// Helper function to get or create conversation ID for a phone number
+function getConversationIdForPhone(phoneNumber: string, providedConversationId?: string): string {
+    // If a conversation ID is explicitly provided, use it and update the mapping
+    if (providedConversationId) {
+        phoneConversationMap.set(phoneNumber, providedConversationId);
+        return providedConversationId;
+    }
+
+    // Check if we have an existing conversation for this phone number
+    const existingConversationId = phoneConversationMap.get(phoneNumber);
+    if (existingConversationId) {
+        console.error(`[SMS-SERVER] Using existing conversation for ${phoneNumber}: ${existingConversationId}`);
+        return existingConversationId;
+    }
+
+    // Generate new conversation ID and store the mapping
+    const newConversationId = crypto.randomUUID();
+    phoneConversationMap.set(phoneNumber, newConversationId);
+    console.error(`[SMS-SERVER] Created new conversation for ${phoneNumber}: ${newConversationId}`);
+    return newConversationId;
+}
+
+function appendPhoneNumberToMessage(message: string, phoneNumber: string): string {
+    return `${message} ${phoneNumber}`;
+}
+
 async function forwardToClient(conversationId: string, message: string, apiKey: string, phoneNumber: string, from: string) {
     const url = `http://localhost:3080/api/messages/${conversationId}`;
+
+    const contentsWithPhoneNumber = appendPhoneNumberToMessage(message, phoneNumber);
+
+    // Create conversation title for new conversations
+    const conversationTitle = `SMS Agent Chat with ${phoneNumber}`;
+
     const payload = {
         role: "external",
-        content: message,
-        text: message,
+        content: contentsWithPhoneNumber,
         from: from,
-        isStream: false,
         metadata: {
+            endpoint: "agents",
+            agent_id: AGENT_ID,
+            model: AGENT_MODEL,
             phoneNumber: phoneNumber,
-            source: 'sms'
+            source: 'sms',
+            title: conversationTitle,
+            // Additional metadata to help with conversation creation
+            conversationMetadata: {
+                title: conversationTitle,
+                endpoint: "agents",
+                agent_id: AGENT_ID,
+                model: AGENT_MODEL
+            }
         }
     };
 
-    console.error('[SMS-SERVER] === Forwarding to LibreChat ===');
+    console.error('[SMS-SERVER] === Forwarding to LibreChat Agent ===');
     console.error('[SMS-SERVER] URL:', url);
+    console.error('[SMS-SERVER] Agent ID:', AGENT_ID);
+    console.error('[SMS-SERVER] Model:', AGENT_MODEL);
+    console.error('[SMS-SERVER] Current Time:', currentDateANDTime());
+    console.error('[SMS-SERVER] Conversation Title:', conversationTitle);
     console.error('[SMS-SERVER] Headers:', {
         'Content-Type': 'application/json',
         'x-api-key': '***REDACTED***',
@@ -164,10 +239,10 @@ app.post('/api/receive-sms', async (req, res) => {
         return;
     }
 
-    // Generate a new conversation ID if one isn't provided in metadata
-    const conversationId = metadata?.conversationId || crypto.randomUUID();
-    const isGeneratedId = !metadata?.conversationId;
+    // Get phone number and manage conversation ID
     const phoneNumber = metadata?.phoneNumber || from;  // Use metadata phone number or fallback to from
+    const conversationId = getConversationIdForPhone(phoneNumber, metadata?.conversationId);
+    const isGeneratedId = !metadata?.conversationId;
 
     const receivedAt = new Date().toISOString();
     console.error(`[SMS-SERVER] === Message Details ===`);
@@ -176,11 +251,21 @@ app.post('/api/receive-sms', async (req, res) => {
     console.error(`[SMS-SERVER] Phone Number: ${phoneNumber}`);
     console.error(`[SMS-SERVER] Conversation ID: ${conversationId}`);
     console.error(`[SMS-SERVER] Is Generated ID: ${isGeneratedId}`);
+    console.error(`[SMS-SERVER] Agent ID: ${AGENT_ID}`);
+    console.error(`[SMS-SERVER] Conversation Status: ${isGeneratedId ? 'NEW' : 'EXISTING'}`);
+    console.error(`[SMS-SERVER] Total Tracked Conversations: ${phoneConversationMap.size}`);
     console.error(`[SMS-SERVER] Received at: ${receivedAt}`);
 
     try {
         await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
         console.error('[SMS-SERVER] Successfully processed and forwarded message');
+
+        // Log success with conversation details
+        if (isGeneratedId) {
+            console.error(`[SMS-SERVER] Created new agent conversation: ${conversationId}`);
+        } else {
+            console.error(`[SMS-SERVER] Used existing conversation: ${conversationId}`);
+        }
     } catch (err) {
         console.error('[SMS-SERVER] Error forwarding to client:', err);
         res.status(500).json({ error: 'Failed to forward message' });
@@ -192,17 +277,46 @@ app.post('/api/receive-sms', async (req, res) => {
         received_at: receivedAt,
         message_id: `${from}-${Date.now()}`,
         conversation_id: conversationId,
-        is_generated_id: isGeneratedId
+        is_generated_id: isGeneratedId,
+        agent_id: AGENT_ID
     });
 });
 
-// Start the HTTPS server
-https.createServer(httpsOptions, app).listen(PORT, () => {
-    console.error(`[SMS-SERVER] HTTPS Server started and listening on port ${PORT}`);
-    console.error('[SMS-SERVER] Environment:', {
-        port: PORT,
-        apiKeyPresent: !!API_KEY,
-        externalApiKeyPresent: !!process.env.EXTERNAL_MESSAGE_API_KEY,
-        sslEnabled: true
+// Start the appropriate server(s)
+if (sslEnabled && httpsOptions) {
+    // Start HTTPS server
+    https.createServer(httpsOptions, app).listen(PORT, () => {
+        console.error(`[SMS-SERVER] HTTPS Server started and listening on port ${PORT}`);
+        console.error('[SMS-SERVER] Environment:', {
+            port: PORT,
+            apiKeyPresent: !!API_KEY,
+            externalApiKeyPresent: !!process.env.EXTERNAL_MESSAGE_API_KEY,
+            sslEnabled: true,
+            agentId: AGENT_ID,
+            agentModel: AGENT_MODEL,
+            currentTime: currentDateANDTime()
+        });
+        console.error('[SMS-SERVER] ==========================================');
+        console.error('[SMS-SERVER] CONNECTION ENDPOINT:');
+        console.error(`[SMS-SERVER] HTTPS: https://100.92.179.100:${PORT}/api/receive-sms`);
+        console.error('[SMS-SERVER] ==========================================');
     });
-}); 
+} else {
+    // Start HTTP-only server
+    app.listen(PORT, () => {
+        console.error(`[SMS-SERVER] HTTP Server started and listening on port ${PORT}`);
+        console.error('[SMS-SERVER] Environment:', {
+            port: PORT,
+            apiKeyPresent: !!API_KEY,
+            externalApiKeyPresent: !!process.env.EXTERNAL_MESSAGE_API_KEY,
+            sslEnabled: false,
+            agentId: AGENT_ID,
+            agentModel: AGENT_MODEL,
+            currentTime: currentDateANDTime()
+        });
+        console.error('[SMS-SERVER] ==========================================');
+        console.error('[SMS-SERVER] CONNECTION ENDPOINT:');
+        console.error(`[SMS-SERVER] HTTP: http://100.92.179.100:${PORT}/api/receive-sms`);
+        console.error('[SMS-SERVER] ==========================================');
+    });
+} 

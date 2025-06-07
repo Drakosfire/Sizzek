@@ -53,6 +53,13 @@ mcp-servers/todoodles/node_modules/
 .env
 *.wav
 *.gpg
+*.crt
+*.key
+*.pem
+*.p12
+*.p8
+*.p7b
+*.p7c
 # The * wildcard matches all files and directories inside the directory
 # memory_files/* ignores everything inside memory_files/
 memory_files/*
