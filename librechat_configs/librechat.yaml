@@ -2,28 +2,28 @@ version: 1.0.8
 
 endpoints:
   custom:
-    - name: 'llamacpp'
-      baseURL: "http://host.docker.internal:8080/completion"
-      apiKey: 'not-needed'
-      models:
-        default: ['BitAgent-8B.Q8_0.gguf', 'Llama-xLAM-2-8B-fc-r-Q8_0.gguf', 'watt-tool-8B.Q8_0.gguf']
-        fetch: false
-      titleConvo: false
-      titleModel: 'BitAgent-8B.Q8_0.gguf'   # Replace with your actual model name
-      modelDisplayLabel: 'LlamaCPP'
-      forcePrompt: true
-      directEndpoint: true
-      addParams:
-        stream: true
-      dropParams: ["stop", "user", "frequency_penalty", "presence_penalty"]
-      headers:
-        Authorization: "Bearer no-key"
+    # - name: 'llamacpp'
+    #   baseURL: "http://host.docker.internal:8080/completion"
+    #   apiKey: 'not-needed'
+    #   models:
+    #     default: ['BitAgent-8B.Q8_0.gguf', 'Llama-xLAM-2-8B-fc-r-Q8_0.gguf', 'watt-tool-8B.Q8_0.gguf']
+    #     fetch: false
+    #   titleConvo: false
+    #   titleModel: 'BitAgent-8B.Q8_0.gguf'   # Replace with your actual model name
+    #   modelDisplayLabel: 'LlamaCPP'
+    #   forcePrompt: true
+    #   directEndpoint: true
+    #   addParams:
+    #     stream: true
+    #   dropParams: ["stop", "user", "frequency_penalty", "presence_penalty"]
+    #   headers:
+    #     Authorization: "Bearer no-key"
     
     - name: "ollama"
       apiKey: "ollama"
       baseURL: "http://172.17.0.1:11434/v1"
       models:
-        default: [ "bitagent", "qwen3:14b", "phi4-mini", qwen2.5:14b, xlam-2-3b]
+        default: [ "bitagent", "qwen3:14b", "phi4-mini", "qwen2.5:14b", "xlam-2-3b" ]
         fetch: true
       titleConvo: false
       titleModel: "current_model"
@@ -31,7 +31,11 @@ endpoints:
       summaryModel: "current_model"
       forcePrompt: false
       modelDisplayLabel: "Ollama"
-      
+      directEndpoint: true
+     
+  agents:
+    capabilities: ["execute_code", "file_search", "actions", "tools"]
+
 speech:
   stt:
     openai:
@@ -39,7 +43,7 @@ speech:
       model: 'whisper-1'
   tts:
     localai:
-      url: "http://host.docker.internal:8002/v1/audio/speech/stream"
+      url: "http://172.17.0.1:8002/v1/audio/speech/stream"
       voices: ["test_voice", "Karlach_v1", "Gale_v1", "Astarion_v1", "Kirkv1"]
       backend: 'zonos'
       apiKey: ''  # Zonos API doesn't require authentication
@@ -54,11 +58,11 @@ speech:
       autoSendText: 0
 
 mcpServers:
-  memory:
+  remember:
     type: stdio
     command: node
     args:
-      - "../Sizzek/mcp-servers/memory/src/memory/dist/index.js"
+      - "../Sizzek/mcp-servers/memory/dist/index.js"
     timeout: 30000
     initTimeout: 10000
     env:
@@ -83,3 +87,26 @@ mcpServers:
     command: node
     args:
       - "../Sizzek/mcp-servers/twilio-sms/dist/index.js"
+
+  google-calendar:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/google-calendar-mcp/build/index.js"
+    timeout: 30000
+    initTimeout: 10000
+    env:
+        GOOGLE_CALENDAR_API_KEY: "../Sizzek/credentials/client_secret_343086464830-3k2nk6n9bhjc0vvuut4cb6lnklfb5b69.apps.googleusercontent.com.json"
+
+  # scheduler:
+  #   type: stdio
+  #   command: node
+  #   args:
+  #     - "../Sizzek/mcp-servers/scheduler/dist/index.js"
+  #   timeout: 30000
+  #   initTimeout: 10000
+  #   env:
+  #       # NODE_ENV: "production"
+  #       SCHEDULER_FILE_PATH: "/media/drakosfire/Shared/Projects/Sizzek/memory_files/scheduler.json"
+  #   stderr: inherit
+  
