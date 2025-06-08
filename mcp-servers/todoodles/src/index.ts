@@ -41,6 +41,8 @@ interface TodoodleItem {
 class TodoodleListManager {
     private todoodles: TodoodleItem[] = [];
     private lastId: number = 0;
+    private isSaving: boolean = false;
+    private saveQueue: Promise<void> = Promise.resolve();
 
     constructor() {
         this.load().catch(error => {
@@ -107,13 +109,76 @@ class TodoodleListManager {
     }
 
     private async save(): Promise<void> {
+        // If already saving, queue this save operation
+        if (this.isSaving) {
+            return new Promise((resolve, reject) => {
+                this.saveQueue = this.saveQueue
+                    .then(() => this.performSave())
+                    .then(resolve)
+                    .catch(reject);
+            });
+        }
+
+        return this.performSave();
+    }
+
+    private async performSave(): Promise<void> {
+        this.isSaving = true;
         try {
             console.error(`Saving ${this.todoodles.length} todoodles to ${todosFilePath}`);
-            await fs.writeFile(todosFilePath, JSON.stringify(this.todoodles, null, 2));
+
+            // Create backup of existing file if it exists
+            try {
+                const backupDir = path.join(path.dirname(todosFilePath), 'backups');
+                await fs.mkdir(backupDir, { recursive: true });
+
+                if (await fs.access(todosFilePath).then(() => true).catch(() => false)) {
+                    // Read the current file to ensure it's valid JSON
+                    const currentData = await fs.readFile(todosFilePath, 'utf-8');
+                    try {
+                        // Validate the current data is valid JSON
+                        JSON.parse(currentData);
+
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                        const backupPath = path.join(backupDir, `todoodles_${timestamp}.json`);
+
+                        // Write the backup
+                        await fs.writeFile(backupPath, currentData);
+
+                        // Keep only the last 5 backups
+                        const backups = await fs.readdir(backupDir);
+                        if (backups.length > 5) {
+                            const sortedBackups = backups
+                                .filter(f => f.startsWith('todoodles_'))
+                                .sort()
+                                .reverse();
+                            for (const oldBackup of sortedBackups.slice(5)) {
+                                await fs.unlink(path.join(backupDir, oldBackup));
+                            }
+                        }
+                    } catch (parseError) {
+                        console.error('Failed to validate current todoodles file:', parseError);
+                        // Don't create a backup if the current file is invalid
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to create backup:', error);
+            }
+
+            // Create a temporary file first
+            const tempFilePath = `${todosFilePath}.tmp`;
+            await fs.writeFile(tempFilePath, JSON.stringify(this.todoodles, null, 2));
+
+            // Atomic rename operation
+            await fs.rename(tempFilePath, todosFilePath);
+
             console.error('Todoodles saved successfully');
         } catch (error) {
             console.error('Error saving todoodles:', error);
             throw error;
+        } finally {
+            this.isSaving = false;
         }
     }
 
