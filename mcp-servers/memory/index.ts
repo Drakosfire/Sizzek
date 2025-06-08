@@ -40,6 +40,9 @@ interface KnowledgeGraph {
 
 // The KnowledgeGraphManager class contains all operations to interact with the knowledge graph
 class KnowledgeGraphManager {
+  private isSaving: boolean = false;
+  private saveQueue: Promise<void> = Promise.resolve();
+
   private async loadGraph(): Promise<KnowledgeGraph> {
     try {
       const data = await fs.readFile(MEMORY_FILE_PATH, "utf-8");
@@ -59,53 +62,83 @@ class KnowledgeGraphManager {
   }
 
   private async saveGraph(graph: KnowledgeGraph): Promise<void> {
-    // Create backup of existing file if it exists
-    try {
-      const backupDir = path.join(path.dirname(MEMORY_FILE_PATH), 'backups');
-      await fs.mkdir(backupDir, { recursive: true });
-
-      if (await fs.access(MEMORY_FILE_PATH).then(() => true).catch(() => false)) {
-        // Read the current file to ensure it's valid JSON
-        const currentData = await fs.readFile(MEMORY_FILE_PATH, 'utf-8');
-        try {
-          // Validate the current data is valid JSON
-          const lines = currentData.split('\n').filter(line => line.trim() !== '');
-          for (const line of lines) {
-            JSON.parse(line);
-          }
-
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const backupPath = path.join(backupDir, `memory_${timestamp}.json`);
-
-          // Write the backup with proper line endings
-          await fs.writeFile(backupPath, currentData);
-
-          // Keep only the last 5 backups
-          const backups = await fs.readdir(backupDir);
-          if (backups.length > 5) {
-            const sortedBackups = backups
-              .filter(f => f.startsWith('memory_'))
-              .sort()
-              .reverse();
-            for (const oldBackup of sortedBackups.slice(5)) {
-              await fs.unlink(path.join(backupDir, oldBackup));
-            }
-          }
-        } catch (parseError) {
-          console.error('Failed to validate current memory file:', parseError);
-          // Don't create a backup if the current file is invalid
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to create backup:', error);
+    // If already saving, queue this save operation
+    if (this.isSaving) {
+      return new Promise((resolve, reject) => {
+        this.saveQueue = this.saveQueue
+          .then(() => this.performSave(graph))
+          .then(resolve)
+          .catch(reject);
+      });
     }
 
-    const lines = [
-      ...graph.entities.map(e => JSON.stringify({ type: "entity", ...e })),
-      ...graph.relations.map(r => JSON.stringify({ type: "relation", ...r })),
-    ];
-    await fs.writeFile(MEMORY_FILE_PATH, lines.join("\n"));
+    return this.performSave(graph);
+  }
+
+  private async performSave(graph: KnowledgeGraph): Promise<void> {
+    this.isSaving = true;
+    try {
+      // Create backup of existing file if it exists
+      try {
+        const backupDir = path.join(path.dirname(MEMORY_FILE_PATH), 'backups');
+        await fs.mkdir(backupDir, { recursive: true });
+
+        if (await fs.access(MEMORY_FILE_PATH).then(() => true).catch(() => false)) {
+          // Read the current file to ensure it's valid JSON
+          const currentData = await fs.readFile(MEMORY_FILE_PATH, 'utf-8');
+          try {
+            // Validate the current data is valid JSON
+            const lines = currentData.split('\n').filter(line => line.trim() !== '');
+            for (const line of lines) {
+              JSON.parse(line);
+            }
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupPath = path.join(backupDir, `memory_${timestamp}.json`);
+
+            // Write the backup with proper line endings
+            await fs.writeFile(backupPath, currentData);
+
+            // Keep only the last 5 backups
+            const backups = await fs.readdir(backupDir);
+            if (backups.length > 5) {
+              const sortedBackups = backups
+                .filter(f => f.startsWith('memory_'))
+                .sort()
+                .reverse();
+              for (const oldBackup of sortedBackups.slice(5)) {
+                await fs.unlink(path.join(backupDir, oldBackup));
+              }
+            }
+          } catch (parseError) {
+            console.error('Failed to validate current memory file:', parseError);
+            // Don't create a backup if the current file is invalid
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to create backup:', error);
+      }
+
+      // Prepare the new content
+      const lines = [
+        ...graph.entities.map(e => JSON.stringify({ type: "entity", ...e })),
+        ...graph.relations.map(r => JSON.stringify({ type: "relation", ...r })),
+      ];
+      const content = lines.join("\n");
+
+      // Write to temporary file first
+      const tempFilePath = `${MEMORY_FILE_PATH}.tmp`;
+      await fs.writeFile(tempFilePath, content);
+
+      // Atomic rename operation
+      await fs.rename(tempFilePath, MEMORY_FILE_PATH);
+    } catch (error) {
+      console.error('Error saving memory graph:', error);
+      throw error;
+    } finally {
+      this.isSaving = false;
+    }
   }
 
   async createEntities(entities: Entity[]): Promise<Entity[]> {
