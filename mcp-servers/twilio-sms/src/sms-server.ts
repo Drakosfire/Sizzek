@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import https from 'https';
 import fs from 'fs';
+import { ContactManager } from './contacts.js';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -63,7 +64,10 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 
 // Agent Configuration
 const AGENT_ID = process.env.LIBRECHAT_AGENT_ID || 'agent_G5HmZ0jJtfPMXIykL81Nx'; // Default from docs
-const AGENT_MODEL = process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4o';
+const AGENT_MODEL = process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4.1';
+
+// Initialize ContactManager with the default agent ID
+const contactManager = new ContactManager();
 
 // Add request logging middleware
 app.use((req, res, next) => {
@@ -121,13 +125,33 @@ function appendPhoneNumberToMessage(message: string, phoneNumber: string): strin
     return `${message} ${phoneNumber}`;
 }
 
+// Add message deduplication tracking
+const recentMessages = new Map<string, number>();
+const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
+
 async function forwardToClient(conversationId: string, message: string, apiKey: string, phoneNumber: string, from: string) {
     const url = `http://localhost:3080/api/messages/${conversationId}`;
 
-    const contentsWithPhoneNumber = appendPhoneNumberToMessage(message, phoneNumber);
+    // Check for duplicate messages
+    const messageKey = `${conversationId}:${message}`;
+    const now = Date.now();
+    const lastSent = recentMessages.get(messageKey);
+    if (lastSent && (now - lastSent) < MESSAGE_DEDUP_WINDOW) {
+        console.error('[SMS-SERVER] Duplicate message detected, skipping:', messageKey);
+        return { status: 'skipped', reason: 'duplicate' };
+    }
+    recentMessages.set(messageKey, now);
 
-    // Create conversation title for new conversations
-    const conversationTitle = `SMS Agent Chat with ${phoneNumber}`;
+    // Check if we need to prompt for name
+    const needsNamePrompt = contactManager.needsNamePrompt(phoneNumber);
+    let contentsWithPhoneNumber = message;
+
+    if (needsNamePrompt) {
+        contentsWithPhoneNumber = `[System: This is a new contact (${phoneNumber}). Please ask for their name. When they respond you need to call the /manage-contact endpoint and add their name and phone number. Then you can continue with the conversation.]\n\n${message}`;
+    }
+
+    // Get conversation title from contact manager
+    const conversationTitle = contactManager.getConversationTitle(phoneNumber);
 
     const payload = {
         role: "external",
@@ -140,7 +164,6 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
             phoneNumber: phoneNumber,
             source: 'sms',
             title: conversationTitle,
-            // Additional metadata to help with conversation creation
             conversationMetadata: {
                 title: conversationTitle,
                 endpoint: "agents",
@@ -166,8 +189,10 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
     const headers = {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest' // Add this by default to prevent HTML responses
     };
+
     try {
         console.error('[SMS-SERVER] Sending request to LibreChat...');
         const response = await axios.post(url, payload, {
@@ -179,8 +204,8 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
         console.error('[SMS-SERVER] Response Headers:', JSON.stringify(response.headers, null, 2));
         console.error('[SMS-SERVER] Response Data:', JSON.stringify(response.data, null, 2));
 
-        // Check if we got HTML back (indicating SSE attempt)
-        if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
+        // Only retry if we get HTML and it's not already a retry
+        if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>') && !headers['X-Requested-With']) {
             console.error('[SMS-SERVER] Received HTML response, retrying with different headers');
             // Retry with different headers to force JSON response
             const jsonResponse = await axios.post(url, payload, {
@@ -240,46 +265,72 @@ app.post('/api/receive-sms', async (req, res) => {
     }
 
     // Get phone number and manage conversation ID
-    const phoneNumber = metadata?.phoneNumber || from;  // Use metadata phone number or fallback to from
+    const phoneNumber = metadata?.phoneNumber || from;
     const conversationId = getConversationIdForPhone(phoneNumber, metadata?.conversationId);
-    const isGeneratedId = !metadata?.conversationId;
 
-    const receivedAt = new Date().toISOString();
-    console.error(`[SMS-SERVER] === Message Details ===`);
-    console.error(`[SMS-SERVER] From: ${from}`);
-    console.error(`[SMS-SERVER] Body: ${body}`);
-    console.error(`[SMS-SERVER] Phone Number: ${phoneNumber}`);
-    console.error(`[SMS-SERVER] Conversation ID: ${conversationId}`);
-    console.error(`[SMS-SERVER] Is Generated ID: ${isGeneratedId}`);
-    console.error(`[SMS-SERVER] Agent ID: ${AGENT_ID}`);
-    console.error(`[SMS-SERVER] Conversation Status: ${isGeneratedId ? 'NEW' : 'EXISTING'}`);
-    console.error(`[SMS-SERVER] Total Tracked Conversations: ${phoneConversationMap.size}`);
-    console.error(`[SMS-SERVER] Received at: ${receivedAt}`);
+    // Update contact information
+    contactManager.addOrUpdateContact(phoneNumber, {}, conversationId);
 
-    try {
-        await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
-        console.error('[SMS-SERVER] Successfully processed and forwarded message');
-
-        // Log success with conversation details
-        if (isGeneratedId) {
-            console.error(`[SMS-SERVER] Created new agent conversation: ${conversationId}`);
-        } else {
-            console.error(`[SMS-SERVER] Used existing conversation: ${conversationId}`);
-        }
-    } catch (err) {
-        console.error('[SMS-SERVER] Error forwarding to client:', err);
-        res.status(500).json({ error: 'Failed to forward message' });
+    // Check if the message contains a name response
+    const nameMatch = body.match(/^Name:\s*(.+)$/i);
+    if (nameMatch) {
+        const name = nameMatch[1].trim();
+        contactManager.updateContactName(phoneNumber, name);
+        // Don't forward the name response to the agent
+        res.status(200).json({ status: 'success', message: 'Name updated' });
         return;
     }
 
-    res.status(200).json({
-        status: 'processed',
-        received_at: receivedAt,
-        message_id: `${from}-${Date.now()}`,
-        conversation_id: conversationId,
-        is_generated_id: isGeneratedId,
-        agent_id: AGENT_ID
-    });
+    try {
+        await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
+        res.status(200).json({ status: 'success' });
+    } catch (error) {
+        console.error('[SMS-SERVER] Error processing message:', error);
+        res.status(500).json({ error: 'Failed to process message' });
+    }
+});
+
+// Add new endpoint for contact management
+app.post('/api/manage-contact', async (req, res) => {
+    console.error('[SMS-SERVER] === Contact Management Request ===');
+    console.error('[SMS-SERVER] Request body:', JSON.stringify(req.body, null, 2));
+
+    const authHeader = req.headers['authorization'];
+
+    if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
+        console.error('[SMS-SERVER] Unauthorized request: missing or invalid authorization header');
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    const { phoneNumber, name, metadata } = req.body;
+
+    if (!phoneNumber) {
+        console.error('[SMS-SERVER] Bad request: missing phone number');
+        res.status(400).json({ error: 'Missing required field: phoneNumber' });
+        return;
+    }
+
+    try {
+        // Get existing contact or create new one
+        const contact = contactManager.addOrUpdateContact(phoneNumber, {
+            name,
+            metadata
+        }, ''); // Empty conversation ID as this is just an update
+
+        res.status(200).json({
+            status: 'success',
+            contact: {
+                phoneNumber: contact.phoneNumber,
+                name: contact.name,
+                lastInteraction: contact.lastInteraction,
+                metadata: contact.metadata
+            }
+        });
+    } catch (error) {
+        console.error('[SMS-SERVER] Error managing contact:', error);
+        res.status(500).json({ error: 'Failed to manage contact' });
+    }
 });
 
 // Start the appropriate server(s)

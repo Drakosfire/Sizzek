@@ -111,6 +111,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     required: ["to", "message"],
                 },
             },
+            {
+                name: "manage_contact",
+                description: "Add or update contact information for a phone number. This can be used to set a name, notes, or other metadata for a contact.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        phoneNumber: {
+                            type: "string",
+                            description: "The phone number to manage (E.164 format, e.g., +1234567890)"
+                        },
+                        name: {
+                            type: "string",
+                            description: "The name to set for the contact (optional)"
+                        },
+                        notes: {
+                            type: "string",
+                            description: "Additional notes about the contact (optional)"
+                        },
+                        tags: {
+                            type: "array",
+                            items: {
+                                type: "string"
+                            },
+                            description: "Tags to associate with the contact (optional)"
+                        }
+                    },
+                    required: ["phoneNumber"],
+                },
+            }
         ],
     };
 });
@@ -226,6 +255,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     }
                 }
                 throw new Error(`Failed to send SMS: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+        case "manage_contact":
+            try {
+                // Validate phone number format
+                const phoneNumber = args.phoneNumber as string;
+                if (!phoneNumber.startsWith('+')) {
+                    throw new Error('Phone number must be in E.164 format (e.g., +1234567890)');
+                }
+
+                // Create metadata object from optional fields
+                const metadata: any = {};
+                if (args.notes) metadata.notes = args.notes;
+                if (args.tags) metadata.tags = args.tags;
+
+                // Send request to SMS server to update contact
+                const response = await fetch('http://localhost:3081/api/manage-contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.EXTERNAL_MESSAGE_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        phoneNumber,
+                        name: args.name,
+                        metadata
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to update contact: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                return {
+                    content: [{
+                        type: "text",
+                        text: `✅ Contact information updated successfully for ${phoneNumber}`
+                    }]
+                };
+            } catch (error) {
+                console.error('Error managing contact:', error);
+                throw new Error(`Failed to manage contact: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
         default:
             throw new Error(`Unknown tool: ${name}`);
