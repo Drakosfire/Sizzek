@@ -27,7 +27,7 @@ export class LibreChatClient {
             message: task.message,
             conversationId: this.config.conversationId,
             metadata: {
-                source: 'scheduled-task',
+                source: 'scheduled',
                 taskId: task.id,
                 taskName: task.name,
                 schedule: task.schedule,
@@ -68,7 +68,8 @@ export class LibreChatClient {
                     endpoint: "agents",
                     agent_id: process.env.LIBRECHAT_AGENT_ID || "default",
                     model: process.env.LIBRECHAT_AGENT_MODEL || "gpt-4o",
-                    source: 'scheduled-task',
+                    source: 'scheduled',
+                    taskName: taskName,
                     title: `Scheduled Task: ${taskName}`,
                     taskId: request.metadata?.taskId,
                     schedule: request.metadata?.schedule,
