@@ -71,16 +71,20 @@ const contactManager = new ContactManager();
 
 // Add request logging middleware
 app.use((req, res, next) => {
-    console.error(`[SMS-SERVER] ${new Date().toISOString()} ${req.method} ${req.url}`);
-    console.error('[SMS-SERVER] Headers:', JSON.stringify(req.headers, null, 2));
+    // Only log essential request info, not full headers for every request
+    if (req.url.includes('/api/')) {
+        console.error(`[SMS-SERVER] ${req.method} ${req.url}`);
+    }
     next();
 });
 
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 interface SMSPayload {
     from: string;
     body: string;
+    messageSid?: string; // Twilio message SID for true duplicate detection
     metadata?: {
         conversationId?: string;
         phoneNumber?: string;
@@ -129,6 +133,31 @@ function appendPhoneNumberToMessage(message: string, phoneNumber: string): strin
 const recentMessages = new Map<string, number>();
 const MESSAGE_DEDUP_WINDOW = 5000; // 5 seconds
 
+// Add Twilio webhook deduplication tracking (longer window for webhook retries)
+const webhookMessages = new Map<string, number>();
+const WEBHOOK_DEDUP_WINDOW = 60000; // 60 seconds (longer than Twilio retry window)
+
+// Cleanup old entries from both deduplication maps every minute
+setInterval(() => {
+    const now = Date.now();
+
+    // Clean up LibreChat message deduplication
+    for (const [key, timestamp] of recentMessages.entries()) {
+        if (now - timestamp > MESSAGE_DEDUP_WINDOW * 2) { // Keep for 2x the window
+            recentMessages.delete(key);
+        }
+    }
+
+    // Clean up webhook deduplication
+    for (const [key, timestamp] of webhookMessages.entries()) {
+        if (now - timestamp > WEBHOOK_DEDUP_WINDOW * 2) { // Keep for 2x the window
+            webhookMessages.delete(key);
+        }
+    }
+
+    console.error(`[SMS-SERVER] Cleaned up deduplication maps - LibreChat: ${recentMessages.size}, Webhook: ${webhookMessages.size}`);
+}, 60000);
+
 async function forwardToClient(conversationId: string, message: string, apiKey: string, phoneNumber: string, from: string) {
     const url = `http://localhost:3080/api/messages/${conversationId}`;
 
@@ -150,6 +179,11 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
         contentsWithPhoneNumber = `[System: This is a new contact (${phoneNumber}). Please ask for their name. When they respond you need to call the /manage-contact endpoint and add their name and phone number. Then you can continue with the conversation.]\n\n${message}`;
     }
 
+    // CRITICAL: Add phone number context to EVERY message so agent knows who to reply to
+    const contact = contactManager.getContact(phoneNumber);
+    const contactName = contact?.name || `Unknown Contact`;
+    contentsWithPhoneNumber = `[SMS from ${contactName} (${phoneNumber})]: ${contentsWithPhoneNumber}`;
+
     // Get conversation title from contact manager
     const conversationTitle = contactManager.getConversationTitle(phoneNumber);
 
@@ -164,6 +198,7 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
             phoneNumber: phoneNumber,
             source: 'sms',
             title: conversationTitle,
+            additional_instructions: `CRITICAL SMS CONTEXT: You are responding to an SMS from ${phoneNumber}. If you need to send an SMS response, you MUST use the phone number ${phoneNumber} in the send_sms tool. This is the ONLY phone number you should use for SMS responses.`,
             conversationMetadata: {
                 title: conversationTitle,
                 endpoint: "agents",
@@ -173,17 +208,9 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
         }
     };
 
-    console.error('[SMS-SERVER] === Forwarding to LibreChat Agent ===');
+    // Log the payload being sent to LibreChat
+    console.error('[SMS-SERVER] === Sending to LibreChat ===');
     console.error('[SMS-SERVER] URL:', url);
-    console.error('[SMS-SERVER] Agent ID:', AGENT_ID);
-    console.error('[SMS-SERVER] Model:', AGENT_MODEL);
-    console.error('[SMS-SERVER] Current Time:', currentDateANDTime());
-    console.error('[SMS-SERVER] Conversation Title:', conversationTitle);
-    console.error('[SMS-SERVER] Headers:', {
-        'Content-Type': 'application/json',
-        'x-api-key': '***REDACTED***',
-        'Accept': 'application/json'
-    });
     console.error('[SMS-SERVER] Payload:', JSON.stringify(payload, null, 2));
 
     const headers = {
@@ -201,8 +228,10 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
         });
 
         console.error('[SMS-SERVER] Response Status:', response.status);
-        console.error('[SMS-SERVER] Response Headers:', JSON.stringify(response.headers, null, 2));
-        console.error('[SMS-SERVER] Response Data:', JSON.stringify(response.data, null, 2));
+        // Only log response data if it's not successful or contains errors
+        if (response.status !== 200) {
+            console.error('[SMS-SERVER] Response Data:', JSON.stringify(response.data, null, 2));
+        }
 
         // Only retry if we get HTML and it's not already a retry
         if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>') && !headers['X-Requested-With']) {
@@ -215,7 +244,6 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             });
-            console.error('[SMS-SERVER] Retry Response:', JSON.stringify(jsonResponse.data, null, 2));
             return jsonResponse.data;
         }
 
@@ -225,10 +253,8 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
             console.error('[SMS-SERVER] Error forwarding to Client:', {
                 status: error.response?.status,
                 statusText: error.response?.statusText,
-                headers: error.response?.headers,
                 data: error.response?.data,
-                message: error.message,
-                code: error.code
+                message: error.message
             });
         } else {
             console.error('[SMS-SERVER] Error forwarding to Client:', error);
@@ -238,19 +264,18 @@ async function forwardToClient(conversationId: string, message: string, apiKey: 
 }
 
 app.post('/api/receive-sms', async (req, res) => {
-    console.error('[SMS-SERVER] === Incoming SMS Request ===');
-    console.error('[SMS-SERVER] Request body:', JSON.stringify(req.body, null, 2));
-    console.error('[SMS-SERVER] Headers:', JSON.stringify(req.headers, null, 2));
+    console.error('[SMS-SERVER] === Incoming SMS ===');
+    const { from, body, metadata, messageSid } = req.body as SMSPayload;
+    console.error(`[SMS-SERVER] From: ${from}, Message: "${body}", MessageSid: ${messageSid || 'N/A'}`);
 
     const authHeader = req.headers['authorization'];
 
     if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
-        console.error('[SMS-SERVER] Unauthorized request: missing or invalid authorization header');
+        console.error('[SMS-SERVER] Unauthorized request');
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
 
-    const { from, body, metadata } = req.body as SMSPayload;
     if (!from || !body) {
         console.error('[SMS-SERVER] Bad request: missing required fields', { from, body });
         res.status(400).json({ error: 'Missing required fields: from, body' });
@@ -268,44 +293,70 @@ app.post('/api/receive-sms', async (req, res) => {
     const phoneNumber = metadata?.phoneNumber || from;
     const conversationId = getConversationIdForPhone(phoneNumber, metadata?.conversationId);
 
-    // Update contact information
-    contactManager.addOrUpdateContact(phoneNumber, {}, conversationId);
+    // Check for webhook-level duplicates (prevent Twilio retries from causing duplicate processing)
+    // Use MessageSid if available (most reliable), otherwise fall back to content-based key
+    const webhookKey = messageSid ? `sid:${messageSid}` : `${phoneNumber}:${body}:${conversationId}`;
+    const now = Date.now();
+    const lastWebhookTime = webhookMessages.get(webhookKey);
 
-    // Check if the message contains a name response
-    const nameMatch = body.match(/^Name:\s*(.+)$/i);
-    if (nameMatch) {
-        const name = nameMatch[1].trim();
-        contactManager.updateContactName(phoneNumber, name);
-        // Don't forward the name response to the agent
-        res.status(200).json({ status: 'success', message: 'Name updated' });
+    if (lastWebhookTime && (now - lastWebhookTime) < WEBHOOK_DEDUP_WINDOW) {
+        console.error('[SMS-SERVER] Duplicate webhook detected (Twilio retry), responding success but skipping processing:', webhookKey);
+        res.set('Content-Type', 'text/xml');
+        res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
         return;
     }
 
-    try {
-        await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
-        res.status(200).json({ status: 'success' });
-    } catch (error) {
-        console.error('[SMS-SERVER] Error processing message:', error);
-        res.status(500).json({ error: 'Failed to process message' });
-    }
+    // Record this webhook to prevent duplicates
+    webhookMessages.set(webhookKey, now);
+    console.error('[SMS-SERVER] Webhook recorded for deduplication:', webhookKey);
+
+    // CRITICAL: Respond to Twilio immediately with empty TwiML to prevent webhook retries
+    // This must happen BEFORE any long-running operations
+    // Empty TwiML acknowledges receipt without sending a response SMS
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+
+    // Process the message asynchronously after responding to Twilio
+    setImmediate(async () => {
+        try {
+            console.error('[SMS-SERVER] Processing message asynchronously...');
+
+            // Update contact information
+            contactManager.addOrUpdateContact(phoneNumber, {}, conversationId);
+
+            // Check if the message contains a name response
+            const nameMatch = body.match(/^Name:\s*(.+)$/i);
+            if (nameMatch) {
+                const name = nameMatch[1].trim();
+                contactManager.updateContactName(phoneNumber, name);
+                console.error('[SMS-SERVER] Name updated asynchronously:', name);
+                return;
+            }
+
+            await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
+            console.error('[SMS-SERVER] Message processed successfully');
+        } catch (error) {
+            console.error('[SMS-SERVER] Error processing message asynchronously:', error);
+            // Note: We can't respond to the client here since we already responded above
+            // This is acceptable since the webhook was acknowledged
+        }
+    });
 });
 
 // Add new endpoint for contact management
 app.post('/api/manage-contact', async (req, res) => {
-    console.error('[SMS-SERVER] === Contact Management Request ===');
-    console.error('[SMS-SERVER] Request body:', JSON.stringify(req.body, null, 2));
+    const { phoneNumber: contactPhone, name: contactName, metadata } = req.body;
+    console.error(`[SMS-SERVER] === Contact Management: ${contactPhone} -> ${contactName} ===`);
 
     const authHeader = req.headers['authorization'];
 
     if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
-        console.error('[SMS-SERVER] Unauthorized request: missing or invalid authorization header');
+        console.error('[SMS-SERVER] Unauthorized request');
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
 
-    const { phoneNumber, name, metadata } = req.body;
-
-    if (!phoneNumber) {
+    if (!contactPhone) {
         console.error('[SMS-SERVER] Bad request: missing phone number');
         res.status(400).json({ error: 'Missing required field: phoneNumber' });
         return;
@@ -313,8 +364,8 @@ app.post('/api/manage-contact', async (req, res) => {
 
     try {
         // Get existing contact or create new one
-        const contact = contactManager.addOrUpdateContact(phoneNumber, {
-            name,
+        const contact = contactManager.addOrUpdateContact(contactPhone, {
+            name: contactName,
             metadata
         }, ''); // Empty conversation ID as this is just an update
 
