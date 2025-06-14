@@ -980,6 +980,64 @@ import { Task } from '../types/index.js';
 
 ---
 
+## Recent Updates and Changes
+
+### June 14 2025 - Major Simplification and LibreChat Integration
+
+#### Key Changes Made:
+
+1. **Simplified Schedule System**
+   - **REMOVED**: Complex datetime parsing and cron expressions
+   - **ADDED**: Simple `delayMinutes` field for one-time tasks
+   - **RATIONALE**: AI agents lack current time context, leading to past datetime errors
+   - **IMPACT**: Much more reliable task creation from natural language
+
+2. **Enhanced Tool Schema Clarity**
+   - **PROBLEM**: Agents confusing `type: "interval"` with `type: "once"`
+   - **SOLUTION**: Explicit descriptions and examples prioritizing "once" type
+   - **RESULT**: Clear guidance that "once" is for confirmations and single executions
+
+3. **LibreChat API Integration Fixes**
+   - **CORRECTED**: Endpoint from `/api/external-message` to `/api/messages/{conversationId}`
+   - **FIXED**: Authentication headers from `Authorization: Bearer` to `x-api-key`
+   - **ADDED**: Proper external message format matching SMS MCP server pattern
+   - **RESULT**: Successful message delivery to LibreChat conversations
+
+4. **Schedule Validation Improvements**
+   - **SIMPLIFIED**: Removed complex datetime validation logic
+   - **FOCUSED**: Single validation rule: `delayMinutes >= 0.1` (minimum 6 seconds)
+   - **BENEFIT**: Faster validation, clearer error messages
+
+#### Current Schedule Types:
+
+```typescript
+// ONE-TIME TASKS (most common)
+{ type: "once", delayMinutes: 1 }        // 1 minute from now
+{ type: "once", delayMinutes: 0.5 }      // 30 seconds from now
+{ type: "once", delayMinutes: 120 }      // 2 hours from now
+
+// REPEATING TASKS
+{ type: "interval", every: 15, unit: "minutes" }
+{ type: "daily", time: "08:00" }
+{ type: "weekly", dayOfWeek: "monday", time: "09:00" }
+```
+
+#### Technical Implementation Notes:
+
+- **ES Module Configuration**: Confirmed mandatory for MCP server compatibility
+- **File Extensions**: All local TypeScript imports require `.js` extensions
+- **LibreChat Message Format**: Uses `role: "external"` with proper metadata structure
+- **Error Handling**: Improved timeout and retry logic for HTTP requests
+
+#### Lessons Learned:
+
+1. **Simplicity Wins**: Complex datetime handling was over-engineering for 90% of use cases
+2. **Agent Context Matters**: AI agents need explicit guidance about schedule types
+3. **API Integration**: Following existing patterns (SMS MCP server) ensures compatibility
+4. **Time Calculations**: Server-side time calculation is more reliable than client-side
+
+---
+
 ## Next Steps
 
 This design plan provides the foundation for implementation. The key insight is that cron task management is complex because it sits at the intersection of time, state, persistence, and reliability - each bringing their own challenges.
