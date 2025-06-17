@@ -35,6 +35,9 @@ interface TodoodleItem {
     completed: boolean;
     completedAt?: string;
     timeToComplete?: number; // in milliseconds
+    category?: string; // Optional category for organizing todoodles
+    priority: 'low' | 'medium' | 'high' | 'urgent'; // Priority level
+    dueDate?: string; // Optional due date in ISO format
 }
 
 // Our todo list manager
@@ -182,32 +185,39 @@ class TodoodleListManager {
         }
     }
 
-    async add(text: string): Promise<TodoodleItem> {
+    async add(text: string, category?: string, priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium', dueDate?: string): Promise<TodoodleItem> {
         this.lastId += 1;
         const todoodle: TodoodleItem = {
             id: this.lastId.toString(),
             text,
             createdAt: new Date().toISOString(),
-            completed: false
+            completed: false,
+            category,
+            priority,
+            dueDate
         };
         this.todoodles.push(todoodle);
         await this.save();
-        console.error(`📝 Added new todoodle with ID ${todoodle.id}: "${todoodle.text}"`);
+        const dueDateText = dueDate ? `, due ${new Date(dueDate).toLocaleDateString()}` : '';
+        console.error(`📝 Added new todoodle with ID ${todoodle.id}: "${todoodle.text}" [${priority}${category ? `, ${category}` : ''}${dueDateText}]`);
         return todoodle;
     }
 
     async completeById(id: string): Promise<TodoodleItem | null> {
         const todoodle = this.todoodles.find(t => t.id === id);
-        if (!todoodle || todoodle.completed) {
+        if (!todoodle) {
             return null;
         }
 
-        const now = new Date();
-        todoodle.completed = true;
-        todoodle.completedAt = now.toISOString();
-        todoodle.timeToComplete = now.getTime() - new Date(todoodle.createdAt).getTime();
-        await this.save();
-        return todoodle;
+        // Remove the todoodle (same logic as deleteById)
+        const initialLength = this.todoodles.length;
+        this.todoodles = this.todoodles.filter(t => t.id !== id);
+        if (this.todoodles.length !== initialLength) {
+            await this.save();
+            console.error(`✅ Completed and removed todoodle with ID ${todoodle.id}: "${todoodle.text}"`);
+            return todoodle;
+        }
+        return null;
     }
 
     get(): TodoodleItem[] {
@@ -239,6 +249,113 @@ class TodoodleListManager {
             const todoodleText = todoodle.text.toLowerCase();
             return searchTerms.every(term => todoodleText.includes(term));
         });
+    }
+
+    getByCategory(category: string): TodoodleItem[] {
+        return this.get().filter(todoodle =>
+            todoodle.category?.toLowerCase() === category.toLowerCase()
+        );
+    }
+
+    getByPriority(priority: 'low' | 'medium' | 'high' | 'urgent'): TodoodleItem[] {
+        return this.get().filter(todoodle => todoodle.priority === priority);
+    }
+
+    getPrioritized(): TodoodleItem[] {
+        const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
+        return [...this.todoodles]
+            .sort((a, b) => {
+                // First sort by priority (urgent first)
+                const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+                if (priorityDiff !== 0) return priorityDiff;
+                // Then by creation date (newest first)
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+    }
+
+    getCategories(): string[] {
+        const categories = new Set(
+            this.todoodles
+                .map(t => t.category)
+                .filter((c): c is string => c !== undefined && c !== null && c.trim() !== '')
+        );
+        return Array.from(categories).sort();
+    }
+
+    getDueToday(): TodoodleItem[] {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // End of today
+        const todayStart = new Date(today);
+        todayStart.setHours(0, 0, 0, 0); // Start of today
+
+        return this.get().filter(todoodle => {
+            if (!todoodle.dueDate || todoodle.completed) return false;
+            const dueDate = new Date(todoodle.dueDate);
+            return dueDate >= todayStart && dueDate <= today;
+        });
+    }
+
+    getOverdue(): TodoodleItem[] {
+        const now = new Date();
+        return this.get().filter(todoodle => {
+            if (!todoodle.dueDate || todoodle.completed) return false;
+            const dueDate = new Date(todoodle.dueDate);
+            return dueDate < now;
+        });
+    }
+
+    getDueThisWeek(): TodoodleItem[] {
+        const now = new Date();
+        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+        return this.get().filter(todoodle => {
+            if (!todoodle.dueDate || todoodle.completed) return false;
+            const dueDate = new Date(todoodle.dueDate);
+            return dueDate >= now && dueDate <= weekFromNow;
+        });
+    }
+
+    getSortedByDueDate(): TodoodleItem[] {
+        return [...this.todoodles].sort((a, b) => {
+            // Items without due dates go to the bottom
+            if (!a.dueDate && !b.dueDate) {
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }
+            if (!a.dueDate) return 1;
+            if (!b.dueDate) return -1;
+
+            // Sort by due date (earliest first)
+            const dueDateDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+            if (dueDateDiff !== 0) return dueDateDiff;
+
+            // If same due date, sort by priority
+            const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
+            return priorityOrder[b.priority] - priorityOrder[a.priority];
+        });
+    }
+
+    // Helper function to format due date information
+    formatDueDate(dueDate: string): { text: string; emoji: string; isOverdue: boolean } {
+        const due = new Date(dueDate);
+        const now = new Date();
+        const diffMs = due.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            return {
+                text: `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} overdue`,
+                emoji: '🚨',
+                isOverdue: true
+            };
+        } else if (diffDays === 0) {
+            return { text: 'due today', emoji: '⏰', isOverdue: false };
+        } else if (diffDays === 1) {
+            return { text: 'due tomorrow', emoji: '📅', isOverdue: false };
+        } else if (diffDays <= 7) {
+            return { text: `due in ${diffDays} days`, emoji: '📅', isOverdue: false };
+        } else {
+            return { text: `due ${due.toLocaleDateString()}`, emoji: '📅', isOverdue: false };
+        }
     }
 
     async completeByText(text: string): Promise<TodoodleItem | null> {
@@ -280,13 +397,26 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "add",
-                description: "Add a new todoodle item to the list",
+                description: "Add a new todoodle item to the list with optional category and priority",
                 inputSchema: {
                     type: "object",
                     properties: {
                         text: {
                             type: "string",
                             description: "The text of the todoodle item"
+                        },
+                        category: {
+                            type: "string",
+                            description: "Optional category to organize the todoodle (e.g., 'work', 'personal', 'shopping')"
+                        },
+                        priority: {
+                            type: "string",
+                            enum: ["low", "medium", "high", "urgent"],
+                            description: "Priority level of the todoodle. Defaults to 'medium' if not specified."
+                        },
+                        dueDate: {
+                            type: "string",
+                            description: "Optional due date in ISO format (YYYY-MM-DD) or natural language (e.g., 'tomorrow', '2024-12-25')"
                         },
                     },
                     required: ["text"],
@@ -372,6 +502,83 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     required: ["id"],
                 },
             },
+            {
+                name: "get_by_category",
+                description: "Get all todoodles in a specific category",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        category: {
+                            type: "string",
+                            description: "The category to filter by"
+                        },
+                    },
+                    required: ["category"],
+                },
+            },
+            {
+                name: "get_by_priority",
+                description: "Get all todoodles with a specific priority level",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        priority: {
+                            type: "string",
+                            enum: ["low", "medium", "high", "urgent"],
+                            description: "The priority level to filter by"
+                        },
+                    },
+                    required: ["priority"],
+                },
+            },
+            {
+                name: "get_prioritized",
+                description: "Get all todoodles sorted by priority (urgent first) then by creation date",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
+                name: "get_categories",
+                description: "Get a list of all categories currently in use",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
+                name: "get_due_today",
+                description: "Get all todoodles due today",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
+                name: "get_overdue",
+                description: "Get all overdue todoodles",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
+                name: "get_due_this_week",
+                description: "Get all todoodles due within the next 7 days",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
+            {
+                name: "get_sorted_by_due_date",
+                description: "Get all todoodles sorted by due date (earliest first), then by priority",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                },
+            },
         ],
     };
 });
@@ -386,11 +593,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     switch (name) {
         case "add":
-            const todoodle = await todoodleManager.add(args.text as string);
+            const todoodle = await todoodleManager.add(
+                args.text as string,
+                args.category as string | undefined,
+                args.priority as 'low' | 'medium' | 'high' | 'urgent' | undefined,
+                args.dueDate as string | undefined
+            );
+            const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+            const priorityEmoji = {
+                'low': '🟢',
+                'medium': '🟡',
+                'high': '🟠',
+                'urgent': '🔴'
+            }[todoodle.priority];
+
+            let dueDateDisplay = '';
+            if (todoodle.dueDate) {
+                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                dueDateDisplay = ` ${dueInfo.emoji} ${dueInfo.text}`;
+            }
+
             return {
                 content: [{
                     type: "text",
-                    text: `📝 Added todoodle: "${todoodle.text}" (created at ${new Date(todoodle.createdAt).toLocaleString()})`
+                    text: `📝 Added todoodle: "${todoodle.text}"${categoryText} ${priorityEmoji} ${todoodle.priority} priority${dueDateDisplay} (created at ${new Date(todoodle.createdAt).toLocaleString()})`
                 }]
             };
         case "get_today":
@@ -407,7 +633,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const status = todoodle.completed
                     ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
                     : "⏳ Pending";
-                return `- ID: ${todoodle.id}, ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const priorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                let dueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    dueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority}${dueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
             }).join('\n');
             return {
                 content: [{
@@ -429,7 +667,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const status = todoodle.completed
                     ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
                     : "⏳ Pending";
-                return `- ID: ${todoodle.id}, ${todoodle.text} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const allPriorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                let allDueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    allDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${allPriorityEmoji} ${todoodle.priority}${allDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
             }).join('\n');
             return {
                 content: [{
@@ -463,9 +713,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }]
                 };
             }
-            const incompleteSummary = incompleteTodoodles.map(todoodle =>
-                `- ID: ${todoodle.id}, ${todoodle.text} (created at ${new Date(todoodle.createdAt).toLocaleString()})`
-            ).join('\n');
+            const incompleteSummary = incompleteTodoodles.map(todoodle => {
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const incompletePriorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                let incompleteDueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    incompleteDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${incompletePriorityEmoji} ${todoodle.priority}${incompleteDueDateInfo} (created at ${new Date(todoodle.createdAt).toLocaleString()})`;
+            }).join('\n');
             return {
                 content: [{
                     type: "text",
@@ -482,9 +744,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     }]
                 };
             }
-            const searchResults = matches.map(todoodle =>
-                `- ID: ${todoodle.id}, Text: "${todoodle.text}" (${todoodle.completed ? '✅ Completed' : '⏳ Pending'})`
-            ).join('\n');
+            const searchResults = matches.map(todoodle => {
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const searchPriorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                let searchDueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    searchDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, Text: "${todoodle.text}"${categoryText} ${searchPriorityEmoji} ${todoodle.priority}${searchDueDateInfo} (${todoodle.completed ? '✅ Completed' : '⏳ Pending'})`;
+            }).join('\n');
             return {
                 content: [{
                     type: "text",
@@ -513,7 +787,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 return {
                     content: [{
                         type: "text",
-                        text: "🗑️ Todoodle deleted successfully (ID: " + args.id + ")"
+                        text: "❌ Todoodle not found (ID: " + args.id + ")"
                     }]
                 };
             }
@@ -521,6 +795,236 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [{
                     type: "text",
                     text: "🗑️ Todoodle deleted successfully (ID: " + args.id + ")"
+                }]
+            };
+        case "get_by_category":
+            const categoryTodoodles = todoodleManager.getByCategory(args.category as string);
+            if (categoryTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `📂 No todoodles found in category "${args.category}"`
+                    }]
+                };
+            }
+            const categorySummary = categoryTodoodles.map(todoodle => {
+                const status = todoodle.completed
+                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
+                    : "⏳ Pending";
+                const itemPriorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                let categoryDueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    categoryDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, ${todoodle.text} ${itemPriorityEmoji} ${todoodle.priority}${categoryDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `📂 Todoodles in category "${args.category}":\n${categorySummary}`
+                }]
+            };
+        case "get_by_priority":
+            const priorityTodoodles = todoodleManager.getByPriority(args.priority as 'low' | 'medium' | 'high' | 'urgent');
+            if (priorityTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `🎯 No todoodles found with ${args.priority} priority`
+                    }]
+                };
+            }
+            const filterPriorityEmoji = {
+                'low': '🟢',
+                'medium': '🟡',
+                'high': '🟠',
+                'urgent': '🔴'
+            }[args.priority as 'low' | 'medium' | 'high' | 'urgent'];
+            const prioritySummary = priorityTodoodles.map(todoodle => {
+                const status = todoodle.completed
+                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
+                    : "⏳ Pending";
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                let priorityDueDateInfo = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    priorityDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                }
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText}${priorityDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `🎯 ${filterPriorityEmoji} ${args.priority} priority todoodles:\n${prioritySummary}`
+                }]
+            };
+        case "get_prioritized":
+            const prioritizedTodoodles = todoodleManager.getPrioritized();
+            if (prioritizedTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "📋 No todoodles found!"
+                    }]
+                };
+            }
+            const prioritizedSummary = prioritizedTodoodles.map(todoodle => {
+                const status = todoodle.completed
+                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
+                    : "⏳ Pending";
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const todoodlePriorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${todoodlePriorityEmoji} ${todoodle.priority} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `🎯 Todoodles by priority:\n${prioritizedSummary}`
+                }]
+            };
+        case "get_categories":
+            const categories = todoodleManager.getCategories();
+            if (categories.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "📂 No categories found. Add some todoodles with categories to see them here!"
+                    }]
+                };
+            }
+            return {
+                content: [{
+                    type: "text",
+                    text: `📂 Available categories:\n${categories.map(cat => `- ${cat}`).join('\n')}`
+                }]
+            };
+        case "get_due_today":
+            const dueTodayTodoodles = todoodleManager.getDueToday();
+            if (dueTodayTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "⏰ No todoodles due today!"
+                    }]
+                };
+            }
+            const dueTodaySummary = dueTodayTodoodles.map(todoodle => {
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const priorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ⏰ due today`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `⏰ Todoodles due today:\n${dueTodaySummary}`
+                }]
+            };
+        case "get_overdue":
+            const overdueTodoodles = todoodleManager.getOverdue();
+            if (overdueTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "✅ No overdue todoodles! You're all caught up!"
+                    }]
+                };
+            }
+            const overdueSummary = overdueTodoodles.map(todoodle => {
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const priorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate!);
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ${dueInfo.emoji} ${dueInfo.text}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `🚨 Overdue todoodles:\n${overdueSummary}`
+                }]
+            };
+        case "get_due_this_week":
+            const dueThisWeekTodoodles = todoodleManager.getDueThisWeek();
+            if (dueThisWeekTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "📅 No todoodles due this week!"
+                    }]
+                };
+            }
+            const dueThisWeekSummary = dueThisWeekTodoodles.map(todoodle => {
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const priorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate!);
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ${dueInfo.emoji} ${dueInfo.text}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `📅 Todoodles due this week:\n${dueThisWeekSummary}`
+                }]
+            };
+        case "get_sorted_by_due_date":
+            const sortedByDueDateTodoodles = todoodleManager.getSortedByDueDate();
+            if (sortedByDueDateTodoodles.length === 0) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "📋 No todoodles found!"
+                    }]
+                };
+            }
+            const sortedByDueDateSummary = sortedByDueDateTodoodles.map(todoodle => {
+                const status = todoodle.completed
+                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
+                    : "⏳ Pending";
+                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
+                const priorityEmoji = {
+                    'low': '🟢',
+                    'medium': '🟡',
+                    'high': '🟠',
+                    'urgent': '🔴'
+                }[todoodle.priority];
+
+                let dueDateText = '';
+                if (todoodle.dueDate) {
+                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
+                    dueDateText = ` ${dueInfo.emoji} ${dueInfo.text}`;
+                } else {
+                    dueDateText = ' 📝 no due date';
+                }
+
+                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority}${dueDateText} - ${status}`;
+            }).join('\n');
+            return {
+                content: [{
+                    type: "text",
+                    text: `📅 Todoodles sorted by due date:\n${sortedByDueDateSummary}`
                 }]
             };
         default:
