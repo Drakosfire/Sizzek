@@ -28,6 +28,7 @@ export enum TaskStatus {
 // Simple scheduling system - much easier than cron!
 export type Schedule =
     | OneTimeSchedule
+    | ScheduledTaskSchedule
     | IntervalSchedule
     | DailySchedule
     | WeeklySchedule
@@ -36,6 +37,11 @@ export type Schedule =
 export interface OneTimeSchedule {
     type: 'once';
     delayMinutes: number; // Delay in minutes from current server time (supports decimals, e.g., 0.5 = 30 seconds)
+}
+
+export interface ScheduledTaskSchedule {
+    type: 'scheduled';
+    datetime: string; // ISO 8601 format date/time string (YYYY-MM-DDTHH:MM:SS)
 }
 
 export interface IntervalSchedule {

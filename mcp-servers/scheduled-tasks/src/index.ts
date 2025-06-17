@@ -50,7 +50,7 @@ const librechatClient = LIBRECHAT_API_KEY ? new LibreChatClient({
     retryDelay: RETRY_DELAY
 }) : undefined;
 
-// Initialize the task manager with LibreChat client
+// Initialize the task manager with LibreChat client and persistent storage
 const taskManager = new TaskManager(librechatClient);
 const validator = new ScheduleValidator();
 
@@ -69,130 +69,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: "create_scheduled_task",
-                description: "Create a new scheduled task that will send a message back to the agent at specified times. Use this to schedule reminders, periodic actions, or one-time future messages.",
+                name: "create_once_task",
+                description: "Create a one-time task that executes after a specified delay from now. Use this for relative timing like 'in 30 minutes' or 'in 2 hours'.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         name: {
                             type: "string",
-                            description: "A descriptive name for the task"
+                            description: "A descriptive name for the task",
+                            examples: ["Reminder to call John", "Meeting notification", "Exercise reminder"]
                         },
                         description: {
                             type: "string",
-                            description: "Optional description of what the task does"
+                            description: "Optional description of what the agent should do"
                         },
-                        schedule: {
-                            type: "object",
-                            description: "Schedule configuration. CRITICAL: Use 'once' for ONE-TIME tasks (confirmation messages, reminders, single notifications). Use 'interval' for REPEATING tasks. For one-time tasks after N minutes, use: {type: 'once', delayMinutes: N}. For repeating tasks every N minutes, use: {type: 'interval', every: N, unit: 'minutes'}.",
-                            properties: {
-                                type: {
-                                    type: "string",
-                                    enum: ["once", "interval", "daily", "weekly", "monthly"],
-                                    description: "CRITICAL: Use 'once' for confirmation messages, one-time reminders, or any single execution. Use 'interval' only for repeating tasks."
-                                }
-                            },
-                            required: ["type"],
-                            anyOf: [
-                                {
-                                    properties: {
-                                        type: { const: "once" },
-                                        delayMinutes: {
-                                            type: "number",
-                                            minimum: 0.1,
-                                            description: "Delay in minutes from current server time. Supports decimals (e.g., 0.5 = 30 seconds, 1.5 = 90 seconds)"
-                                        }
-                                    },
-                                    required: ["type", "delayMinutes"],
-                                    additionalProperties: false
-                                },
-                                {
-                                    properties: {
-                                        type: { const: "interval" },
-                                        every: {
-                                            type: "integer",
-                                            minimum: 1,
-                                            description: "Number of units between executions"
-                                        },
-                                        unit: {
-                                            type: "string",
-                                            enum: ["minutes", "hours", "days"],
-                                            description: "Unit of time for interval"
-                                        },
-                                        startTime: {
-                                            type: "string",
-                                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
-                                            description: "Optional start time in HH:MM format"
-                                        }
-                                    },
-                                    required: ["type", "every", "unit"],
-                                    additionalProperties: false
-                                },
-                                {
-                                    properties: {
-                                        type: { const: "daily" },
-                                        time: {
-                                            type: "string",
-                                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
-                                            description: "Time in HH:MM format (24-hour)"
-                                        },
-                                        weekdaysOnly: {
-                                            type: "boolean",
-                                            description: "If true, only runs on weekdays (Mon-Fri)"
-                                        }
-                                    },
-                                    required: ["type", "time"],
-                                    additionalProperties: false
-                                },
-                                {
-                                    properties: {
-                                        type: { const: "weekly" },
-                                        dayOfWeek: {
-                                            type: "string",
-                                            enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
-                                            description: "Day of week to run"
-                                        },
-                                        time: {
-                                            type: "string",
-                                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
-                                            description: "Time in HH:MM format (24-hour)"
-                                        }
-                                    },
-                                    required: ["type", "dayOfWeek", "time"],
-                                    additionalProperties: false
-                                },
-                                {
-                                    properties: {
-                                        type: { const: "monthly" },
-                                        dayOfMonth: {
-                                            type: "integer",
-                                            minimum: 1,
-                                            maximum: 31,
-                                            description: "Day of month to run (1-31)"
-                                        },
-                                        time: {
-                                            type: "string",
-                                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
-                                            description: "Time in HH:MM format (24-hour)"
-                                        }
-                                    },
-                                    required: ["type", "dayOfMonth", "time"],
-                                    additionalProperties: false
-                                }
-                            ],
-                            examples: [
-                                { type: "once", delayMinutes: 1 },
-                                { type: "once", delayMinutes: 0.5 },
-                                { type: "once", delayMinutes: 5 },
-                                { type: "interval", every: 15, unit: "minutes" },
-                                { type: "daily", time: "08:00" },
-                                { type: "weekly", dayOfWeek: "monday", time: "09:00" },
-                                { type: "daily", time: "09:00", weekdaysOnly: true }
-                            ]
+                        delayMinutes: {
+                            type: "number",
+                            minimum: 0.1,
+                            description: "Delay in minutes from now. Supports decimals (e.g., 0.5 = 30 seconds, 1.5 = 90 seconds)",
+                            examples: [1, 5, 30, 60, 120]
                         },
                         message: {
                             type: "string",
-                            description: "Message to send when task triggers"
+                            description: "Message to send when task triggers",
+                            examples: ["Time to call John!", "Meeting starts in 5 minutes", "Time for your workout! 💪"]
                         },
                         enabled: {
                             type: "boolean",
@@ -200,7 +100,210 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                             default: true
                         }
                     },
-                    required: ["name", "schedule", "message"]
+                    required: ["name", "delayMinutes", "message"]
+                }
+            },
+            {
+                name: "create_scheduled_task",
+                description: "Create a one-time task that executes at a specific date and time. Use this for absolute timing like 'tomorrow at 3pm' or 'December 25th at 9am'.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description: "A descriptive name for the task",
+                            examples: ["Birthday reminder for Sarah", "Christmas morning greeting", "Project deadline alert"]
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional description of what the agent should do"
+                        },
+                        datetime: {
+                            type: "string",
+                            description: "Date and time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS). Use server's local timezone.",
+                            examples: ["2024-12-25T09:00:00", "2024-06-15T14:30:00", "2024-07-04T12:00:00"]
+                        },
+                        message: {
+                            type: "string",
+                            description: "Message to send when task triggers",
+                            examples: ["Happy Birthday Sarah! 🎂", "Merry Christmas! 🎄", "Project deadline is today!"]
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be active immediately",
+                            default: true
+                        }
+                    },
+                    required: ["name", "datetime", "message"]
+                }
+            },
+            {
+                name: "create_daily_task",
+                description: "Create a task that executes daily at a specific time. Use this for daily routines and regular reminders.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description: "A descriptive name for the task",
+                            examples: ["Daily exercise reminder", "Morning standup", "End of day review"]
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional description of what the agent should do"
+                        },
+                        time: {
+                            type: "string",
+                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
+                            description: "Time in HH:MM format (24-hour)",
+                            examples: ["08:00", "12:30", "17:45", "09:15"]
+                        },
+                        weekdaysOnly: {
+                            type: "boolean",
+                            description: "If true, only runs on weekdays (Monday-Friday)",
+                            default: false
+                        },
+                        message: {
+                            type: "string",
+                            description: "Message to send when task triggers",
+                            examples: ["Time for your daily exercise!", "Daily standup meeting starts now", "Time to review your day"]
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be active immediately",
+                            default: true
+                        }
+                    },
+                    required: ["name", "time", "message"]
+                }
+            },
+            {
+                name: "create_weekly_task",
+                description: "Create a task that executes weekly on a specific day and time. Use this for weekly meetings, reports, or routines.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description: "A descriptive name for the task",
+                            examples: ["Weekly team meeting", "Sunday meal prep reminder", "Friday report"]
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional description of what the agent should do"
+                        },
+                        dayOfWeek: {
+                            type: "string",
+                            enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+                            description: "Day of week to run (must be lowercase)",
+                            examples: ["monday", "friday", "sunday"]
+                        },
+                        time: {
+                            type: "string",
+                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
+                            description: "Time in HH:MM format (24-hour)",
+                            examples: ["09:00", "14:30", "18:00"]
+                        },
+                        message: {
+                            type: "string",
+                            description: "Message to send when task triggers",
+                            examples: ["Weekly team meeting starts now!", "Time for Sunday meal prep", "Weekly report is due"]
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be active immediately",
+                            default: true
+                        }
+                    },
+                    required: ["name", "dayOfWeek", "time", "message"]
+                }
+            },
+            {
+                name: "create_monthly_task",
+                description: "Create a task that executes monthly on a specific date and time. Use this for monthly reports, bill reminders, or periodic reviews.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description: "A descriptive name for the task",
+                            examples: ["Monthly report", "Pay rent reminder", "Monthly review meeting"]
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional description of what the agent should do"
+                        },
+                        dayOfMonth: {
+                            type: "integer",
+                            minimum: 1,
+                            maximum: 31,
+                            description: "Day of month to run (1-31). For months with fewer days, will run on the last day of that month.",
+                            examples: [1, 15, 28, 31]
+                        },
+                        time: {
+                            type: "string",
+                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
+                            description: "Time in HH:MM format (24-hour)",
+                            examples: ["09:00", "10:30", "15:00"]
+                        },
+                        message: {
+                            type: "string",
+                            description: "Message to send when task triggers",
+                            examples: ["Monthly report is due today", "Time to pay rent", "Monthly review meeting starts now"]
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be active immediately",
+                            default: true
+                        }
+                    },
+                    required: ["name", "dayOfMonth", "time", "message"]
+                }
+            },
+            {
+                name: "create_interval_task",
+                description: "Create a task that executes repeatedly at regular intervals. Use this for periodic checks, status updates, or recurring actions.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description: "A descriptive name for the task",
+                            examples: ["Health check", "Status update", "Periodic reminder"]
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional description of what the agent should do"
+                        },
+                        every: {
+                            type: "integer",
+                            minimum: 1,
+                            description: "Number of units between executions",
+                            examples: [5, 15, 30, 60, 120]
+                        },
+                        unit: {
+                            type: "string",
+                            enum: ["minutes", "hours", "days"],
+                            description: "Unit of time for interval",
+                            examples: ["minutes", "hours", "days"]
+                        },
+                        startTime: {
+                            type: "string",
+                            pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$",
+                            description: "Optional start time in HH:MM format for hour/day intervals"
+                        },
+                        message: {
+                            type: "string",
+                            description: "Message to send when task triggers",
+                            examples: ["System health check", "Hourly status update", "Time for your break!"]
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be active immediately",
+                            default: true
+                        }
+                    },
+                    required: ["name", "every", "unit", "message"]
                 }
             },
             {
@@ -281,12 +384,167 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
     }
 
     switch (name) {
+        case "create_once_task":
+            try {
+                const task = await taskManager.createTask({
+                    name: args.name,
+                    description: args.description || undefined,
+                    schedule: { type: "once", delayMinutes: args.delayMinutes },
+                    message: args.message,
+                    enabled: args.enabled !== undefined ? args.enabled : undefined
+                });
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Created scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error creating scheduled task:', error);
+                throw new Error(`Failed to create scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
         case "create_scheduled_task":
             try {
                 const task = await taskManager.createTask({
                     name: args.name,
                     description: args.description || undefined,
-                    schedule: args.schedule,
+                    schedule: { type: "scheduled", datetime: args.datetime },
+                    message: args.message,
+                    enabled: args.enabled !== undefined ? args.enabled : undefined
+                });
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Created scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error creating scheduled task:', error);
+                throw new Error(`Failed to create scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
+        case "create_daily_task":
+            try {
+                const task = await taskManager.createTask({
+                    name: args.name,
+                    description: args.description || undefined,
+                    schedule: { type: "daily", time: args.time, weekdaysOnly: args.weekdaysOnly },
+                    message: args.message,
+                    enabled: args.enabled !== undefined ? args.enabled : undefined
+                });
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Created scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error creating scheduled task:', error);
+                throw new Error(`Failed to create scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
+        case "create_weekly_task":
+            try {
+                const task = await taskManager.createTask({
+                    name: args.name,
+                    description: args.description || undefined,
+                    schedule: { type: "weekly", dayOfWeek: args.dayOfWeek, time: args.time },
+                    message: args.message,
+                    enabled: args.enabled !== undefined ? args.enabled : undefined
+                });
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Created scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error creating scheduled task:', error);
+                throw new Error(`Failed to create scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
+        case "create_monthly_task":
+            try {
+                const task = await taskManager.createTask({
+                    name: args.name,
+                    description: args.description || undefined,
+                    schedule: { type: "monthly", dayOfMonth: args.dayOfMonth, time: args.time },
+                    message: args.message,
+                    enabled: args.enabled !== undefined ? args.enabled : undefined
+                });
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Created scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error creating scheduled task:', error);
+                throw new Error(`Failed to create scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
+        case "create_interval_task":
+            try {
+                const task = await taskManager.createTask({
+                    name: args.name,
+                    description: args.description || undefined,
+                    schedule: { type: "interval", every: args.every, unit: args.unit, startTime: args.startTime },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
                 });
@@ -459,6 +717,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
 // Start the server
 async function main() {
+    // Initialize the task manager with persistent storage
+    await taskManager.initialize();
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Scheduled Tasks MCP Server running on stdio");

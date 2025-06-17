@@ -1,4 +1,4 @@
-import { Schedule, ValidationResult, OneTimeSchedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
+import { Schedule, ValidationResult, OneTimeSchedule, ScheduledTaskSchedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
 
 export class ScheduleValidator {
     validate(schedule: Schedule): ValidationResult {
@@ -12,6 +12,9 @@ export class ScheduleValidator {
             switch (schedule.type) {
                 case 'once':
                     this.validateOneTime(schedule, result);
+                    break;
+                case 'scheduled':
+                    this.validateScheduled(schedule, result);
                     break;
                 case 'interval':
                     this.validateInterval(schedule, result);
@@ -43,6 +46,39 @@ export class ScheduleValidator {
             result.errors.push('delayMinutes must be a number >= 0.1 (minimum 6 seconds)');
             result.suggestion = 'Use delayMinutes: 1 for 1 minute, delayMinutes: 0.5 for 30 seconds, etc.';
             return;
+        }
+    }
+
+    private validateScheduled(schedule: ScheduledTaskSchedule, result: ValidationResult): void {
+        if (typeof schedule.datetime !== 'string') {
+            result.isValid = false;
+            result.errors.push('datetime must be a string');
+            return;
+        }
+
+        // Parse ISO 8601 datetime
+        const parsedDate = new Date(schedule.datetime);
+
+        if (isNaN(parsedDate.getTime())) {
+            result.isValid = false;
+            result.errors.push('datetime must be a valid ISO 8601 format (YYYY-MM-DDTHH:MM:SS)');
+            result.suggestion = 'Use format like "2024-12-25T09:00:00" for December 25th at 9am';
+            return;
+        }
+
+        // Check if the date is in the past
+        const now = new Date();
+        if (parsedDate <= now) {
+            result.isValid = false;
+            result.errors.push('datetime cannot be in the past');
+            result.suggestion = `Current time is ${now.toISOString()}, please use a future date/time`;
+            return;
+        }
+
+        // Warning if the scheduled time is too far in the future (1 year)
+        const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+        if (parsedDate > oneYearFromNow) {
+            result.warnings.push('Task scheduled more than 1 year in the future - ensure this is intentional');
         }
     }
 
@@ -130,6 +166,10 @@ export class ScheduleValidator {
         switch (schedule.type) {
             case 'once':
                 return `Once in ${schedule.delayMinutes} minutes`;
+
+            case 'scheduled':
+                const scheduledDate = new Date(schedule.datetime);
+                return `Once at ${scheduledDate.toLocaleString()}`;
 
             case 'interval':
                 const unit = schedule.every === 1 ? schedule.unit.slice(0, -1) : schedule.unit; // Remove 's' for singular

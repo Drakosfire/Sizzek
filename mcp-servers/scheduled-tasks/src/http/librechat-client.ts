@@ -11,6 +11,7 @@ export interface LibreChatConfig {
 
 export interface TriggerRequest {
     message: string;
+    description: string;
     conversationId: string | undefined;
     metadata: Record<string, any> | undefined;
 }
@@ -25,6 +26,7 @@ export class LibreChatClient {
     async triggerTask(task: Task): Promise<void> {
         const request: TriggerRequest = {
             message: task.message,
+            description: task.description || task.name,
             conversationId: this.config.conversationId,
             metadata: {
                 source: 'scheduled',
@@ -46,24 +48,29 @@ export class LibreChatClient {
         const url = `${this.config.endpoint}/api/messages/${request.conversationId}`;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+        const timeoutId = setTimeout(() => {
+            console.error(`HTTP request timeout after ${this.config.timeout}ms for task: ${request.metadata?.taskName}`);
+            controller.abort();
+        }, this.config.timeout);
 
         try {
             console.error('Sending scheduled task trigger to LibreChat:', {
                 url,
                 taskName: request.metadata?.taskName,
-                message: request.message.substring(0, 100) + '...'
+                message: request.message.substring(0, 100) + '...',
+                timeout: this.config.timeout
             });
 
             // Format message with scheduled task context
             const taskName = request.metadata?.taskName || 'Scheduled Task';
-            const contentWithContext = `[Scheduled Task: ${taskName}]: ${request.message}`;
+            const contentWithContext = `[Scheduled Task: ${taskName}]: ${request.description} \n\n ${request.message}`;
 
             // Prepare payload that matches the working SMS implementation format
             const payload = {
                 role: "external",
                 content: contentWithContext,
                 from: "scheduled-task",
+                conversationId: request.conversationId,
                 metadata: {
                     endpoint: "agents",
                     agent_id: process.env.LIBRECHAT_AGENT_ID || "default",
@@ -102,9 +109,12 @@ export class LibreChatClient {
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
-            console.error(`✅ Successfully triggered LibreChat for task: ${request.metadata?.taskName}`);
-            console.error(`💬 Message sent to conversation: ${request.conversationId}`);
-
+            console.error('Successfully sent scheduled task trigger to LibreChat');
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new Error(`Request timeout after ${this.config.timeout}ms: ${error.message}`);
+            }
+            throw error;
         } finally {
             clearTimeout(timeoutId);
         }
@@ -128,7 +138,11 @@ export class LibreChatClient {
                 }
 
                 const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
-                console.error(`Attempt ${attempt} failed, retrying in ${delay}ms:`, lastError.message);
+                console.error(`Attempt ${attempt}/${this.config.retryAttempts} failed, retrying in ${delay}ms:`, lastError.message);
+
+                if (lastError.name === 'AbortError' || lastError.message.includes('timeout')) {
+                    console.error('Timeout detected - consider increasing HTTP_TIMEOUT environment variable');
+                }
 
                 await new Promise(resolve => setTimeout(resolve, delay));
             }

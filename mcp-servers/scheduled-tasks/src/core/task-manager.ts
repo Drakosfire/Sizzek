@@ -2,16 +2,47 @@ import { v4 as uuidv4 } from 'uuid';
 import { Task, TaskStatus, CreateTaskRequest, TaskExecution, Schedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
 import { ScheduleValidator } from './schedule-validator.js';
 import { LibreChatClient } from '../http/librechat-client.js';
+import { TaskStore } from '../storage/task-store.js';
 
 export class TaskManager {
     private tasks = new Map<string, Task>();
+    private taskStore: TaskStore;
     private scheduledTimeouts = new Map<string, NodeJS.Timeout>();
     private runningTasks = new Set<string>();
     private validator = new ScheduleValidator();
     private librechatClient: LibreChatClient | undefined;
 
-    constructor(librechatClient?: LibreChatClient) {
+    constructor(librechatClient?: LibreChatClient, taskStoreConfig?: Partial<import('../storage/task-store.js').TaskStoreConfig>) {
         this.librechatClient = librechatClient;
+        this.taskStore = new TaskStore(taskStoreConfig);
+    }
+
+    async initialize(): Promise<void> {
+        console.log('🔧 Initializing TaskManager with persistent storage...');
+
+        // Initialize the task store
+        await this.taskStore.initialize();
+
+        // Load existing tasks from storage
+        const savedTasks = await this.taskStore.loadTasks();
+
+        // Populate in-memory map for quick access
+        this.tasks.clear();
+        for (const task of savedTasks) {
+            this.tasks.set(task.id, task);
+
+            // Reschedule enabled tasks that were scheduled
+            if (task.enabled && task.status === TaskStatus.SCHEDULED && task.nextRun) {
+                await this.scheduleTask(task);
+            }
+        }
+
+        console.log(`✅ TaskManager initialized with ${savedTasks.length} tasks`);
+    }
+
+    private async persistTasks(): Promise<void> {
+        const tasks = Array.from(this.tasks.values());
+        await this.taskStore.saveTasks(tasks);
     }
 
     async createTask(request: CreateTaskRequest): Promise<Task> {
@@ -40,8 +71,9 @@ export class TaskManager {
             lastError: undefined
         };
 
-        // Store task
+        // Store task in memory and persist to storage
         this.tasks.set(task.id, task);
+        await this.persistTasks();
 
         // Schedule if enabled
         if (task.enabled) {
@@ -77,6 +109,9 @@ export class TaskManager {
         task.status = TaskStatus.SCHEDULED;
         task.updatedAt = new Date();
 
+        // Persist updated task
+        await this.persistTasks();
+
         const msUntilRun = nextRun.getTime() - Date.now();
 
         console.log(`📅 Scheduled task: ${task.name} (next run: ${nextRun.toISOString()})`);
@@ -96,6 +131,9 @@ export class TaskManager {
         switch (schedule.type) {
             case 'once':
                 return new Date(now.getTime() + schedule.delayMinutes * 60 * 1000);
+
+            case 'scheduled':
+                return new Date(schedule.datetime);
 
             case 'interval':
                 return this.calculateIntervalNextRun(schedule, now);
@@ -208,6 +246,9 @@ export class TaskManager {
         task.lastRun = execution.startTime;
         task.totalRuns++;
 
+        // Persist task state before execution
+        await this.persistTasks();
+
         try {
             // Execute task action (LibreChat API call or fallback to logging)
             await this.performTaskAction(task);
@@ -223,9 +264,12 @@ export class TaskManager {
             console.log(`✅ Task completed: ${task.name} (${execution.duration}ms)`);
 
             // For recurring tasks, schedule the next run
-            if (task.schedule.type !== 'once') {
+            if (task.schedule.type !== 'once' && task.schedule.type !== 'scheduled') {
                 task.status = TaskStatus.SCHEDULED;
                 await this.scheduleTask(task);
+            } else {
+                // For one-time tasks, mark as completed and persist
+                await this.persistTasks();
             }
 
         } catch (error) {
@@ -248,9 +292,16 @@ export class TaskManager {
 
             console.error(`❌ Task failed: ${task.name} - ${errorMessage}`);
 
+            // For recurring tasks, schedule the next run even after failure
+            if (task.schedule.type !== 'once' && task.schedule.type !== 'scheduled') {
+                task.status = TaskStatus.SCHEDULED;
+                await this.scheduleTask(task);
+            } else {
+                // For one-time tasks, persist the failed state
+                await this.persistTasks();
+            }
         } finally {
             this.runningTasks.delete(task.id);
-            task.updatedAt = new Date();
         }
     }
 
@@ -289,6 +340,7 @@ export class TaskManager {
         if (!task.enabled) {
             task.enabled = true;
             task.updatedAt = new Date();
+            await this.persistTasks();
             await this.scheduleTask(task);
             console.log(`✅ Enabled task: ${task.name}`);
         }
@@ -301,16 +353,18 @@ export class TaskManager {
         }
 
         if (task.enabled) {
-            task.enabled = false;
-            task.status = TaskStatus.PAUSED;
-            task.updatedAt = new Date();
-
             // Clear timeout
             const timeout = this.scheduledTimeouts.get(taskId);
             if (timeout) {
                 clearTimeout(timeout);
                 this.scheduledTimeouts.delete(taskId);
             }
+
+            task.enabled = false;
+            task.status = TaskStatus.PAUSED;
+            task.nextRun = undefined;
+            task.updatedAt = new Date();
+            await this.persistTasks();
 
             console.log(`⏸️  Disabled task: ${task.name}`);
         }
@@ -332,6 +386,9 @@ export class TaskManager {
         // Remove from maps
         this.tasks.delete(taskId);
         this.runningTasks.delete(taskId);
+
+        // Persist the updated tasks list
+        await this.persistTasks();
 
         console.log(`🗑️  Deleted task: ${task.name}`);
     }
