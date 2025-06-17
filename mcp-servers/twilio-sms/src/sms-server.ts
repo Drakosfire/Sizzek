@@ -158,11 +158,12 @@ setInterval(() => {
     console.error(`[SMS-SERVER] Cleaned up deduplication maps - LibreChat: ${recentMessages.size}, Webhook: ${webhookMessages.size}`);
 }, 60000);
 
-async function forwardToClient(conversationId: string, message: string, apiKey: string, phoneNumber: string, from: string) {
-    const url = `http://localhost:3080/api/messages/${conversationId}`;
+async function forwardToClient(message: string, apiKey: string, phoneNumber: string, from: string) {
+    // Use placeholder conversation ID for SMS routing - let LibreChat handle phone-based discovery
+    const url = `http://localhost:3080/api/messages/sms-conversation`;
 
     // Check for duplicate messages
-    const messageKey = `${conversationId}:${message}`;
+    const messageKey = `${phoneNumber}:${message}`;
     const now = Date.now();
     const lastSent = recentMessages.get(messageKey);
     if (lastSent && (now - lastSent) < MESSAGE_DEDUP_WINDOW) {
@@ -289,13 +290,12 @@ app.post('/api/receive-sms', async (req, res) => {
         return;
     }
 
-    // Get phone number and manage conversation ID
+    // Get phone number - LibreChat will handle conversation ID management
     const phoneNumber = metadata?.phoneNumber || from;
-    const conversationId = getConversationIdForPhone(phoneNumber, metadata?.conversationId);
 
     // Check for webhook-level duplicates (prevent Twilio retries from causing duplicate processing)
     // Use MessageSid if available (most reliable), otherwise fall back to content-based key
-    const webhookKey = messageSid ? `sid:${messageSid}` : `${phoneNumber}:${body}:${conversationId}`;
+    const webhookKey = messageSid ? `sid:${messageSid}` : `${phoneNumber}:${body}`;
     const now = Date.now();
     const lastWebhookTime = webhookMessages.get(webhookKey);
 
@@ -322,7 +322,7 @@ app.post('/api/receive-sms', async (req, res) => {
             console.error('[SMS-SERVER] Processing message asynchronously...');
 
             // Update contact information
-            contactManager.addOrUpdateContact(phoneNumber, {}, conversationId);
+            contactManager.addOrUpdateContact(phoneNumber, {}, '');
 
             // Check if the message contains a name response
             const nameMatch = body.match(/^Name:\s*(.+)$/i);
@@ -333,7 +333,7 @@ app.post('/api/receive-sms', async (req, res) => {
                 return;
             }
 
-            await forwardToClient(conversationId, body, externalMessageApiKey, phoneNumber, from);
+            await forwardToClient(body, externalMessageApiKey, phoneNumber, from);
             console.error('[SMS-SERVER] Message processed successfully');
         } catch (error) {
             console.error('[SMS-SERVER] Error processing message asynchronously:', error);
