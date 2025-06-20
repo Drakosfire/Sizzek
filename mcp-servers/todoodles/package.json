@@ -16,8 +16,11 @@
   ],
   "author": "",
   "license": "ISC",
-  "devDependencies": {
+  "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",
+    "@sizzek/mcp-data": "file:../../mcp-data"
+  },
+  "devDependencies": {
     "@types/node": "^20.11.24",
     "typescript": "^5.3.3"
   }

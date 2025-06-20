@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-06-20T02:58:35.304Z",
+  "mongodb": {
+    "connected": true,
+    "database": "LibreChat",
+    "collection": "mcp_storage"
+  },
+  "collections": [
+    "presets",
+    "users",
+    "projects",
+    "sessions",
+    "messages",
+    "actions",
+    "logs",
+    "files",
+    "promptgroups",
+    "sharedlinks",
+    "keys",
+    "transactions",
+    "mcp_storage",
+    "roles",
+    "toolcalls",
+    "tokens",
+    "prompts",
+    "mcp_memory_test",
+    "conversations",
+    "assistants",
+    "pluginauths",
+    "conversationtags",
+    "banners",
+    "agents",
+    "balances"
+  ],
+  "documents": 4,
+  "issues": [
+    "MCP_STORAGE_TYPE environment variable not set"
+  ],
+  "recommendations": [
+    "Set MCP_STORAGE_TYPE=mongodb in LibreChat configuration"
+  ]
+}
