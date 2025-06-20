@@ -110,28 +110,23 @@ mcp-data/storage/JsonStorage.ts
 
 ### **Memory MCP Server** (Uses Graph Storage)
 ```yaml
-# librechat.yaml
-mcpServers:
-  memory:
-    env:
-      MCP_STORAGE_TYPE: "paginated-graph"
-      MONGODB_CONNECTION_STRING: "mongodb://mongodb:27017/LibreChat"  
-      MONGODB_DATABASE: "LibreChat"
-      MONGODB_COLLECTION_PREFIX: "mcp_memory"
-      MCP_USER_BASED: "true"
+# .env
+
+  MCP_STORAGE_TYPE: "paginated-graph"
+  MONGODB_CONNECTION_STRING: "mongodb://mongodb:27017/LibreChat"  
+  MONGODB_DATABASE: "LibreChat"
+  MONGODB_COLLECTION_PREFIX: "mcp_memory"
+  MCP_USER_BASED: "true"
 ```
 
 ### **Todos MCP Server** (Uses Simple Storage)
 ```yaml
-# librechat.yaml  
-mcpServers:
-  todoodles:
-    env:
-      MCP_STORAGE_TYPE: "mongodb"
-      MONGODB_CONNECTION_STRING: "mongodb://mongodb:27017/LibreChat"
-      MONGODB_DATABASE: "LibreChat" 
-      MONGODB_COLLECTION: "mcp_todos"
-      MCP_USER_BASED: "true"
+# .env
+  MCP_STORAGE_TYPE: "mongodb"
+  MONGODB_CONNECTION_STRING: "mongodb://mongodb:27017/LibreChat"
+  MONGODB_DATABASE: "LibreChat" 
+  MONGODB_COLLECTION: "mcp_todos"
+  MCP_USER_BASED: "true"
 ```
 
 ## **Database Collections Architecture**
