@@ -3,6 +3,7 @@
  * Tests individual entity CRUD operations in isolation
  */
 
+import assert from 'assert';
 import { describe, it, beforeEach, afterEach, before, after } from 'mocha';
 import { getTestDatabase } from '../../helpers/test-database.js';
 import { generateBasicUserGraph, generateEdgeCaseData, generateInvalidData } from '../../helpers/test-data.js';
@@ -454,7 +455,7 @@ describe('PaginatedGraphStorage - Entity Operations', function () {
     describe('Error Handling', function () {
         it('should handle database connection errors gracefully', async function () {
             // Create storage with invalid connection
-            const { PaginatedGraphStorage } = require('@sizzek/mcp-data');
+            const { PaginatedGraphStorage } = await import('@sizzek/mcp-data');
             const invalidStorage = new PaginatedGraphStorage('mongodb://invalid:27017', 'invalid_db');
 
             try {

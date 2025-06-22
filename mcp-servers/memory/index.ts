@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -8,11 +11,25 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { StorageFactory } from '@sizzek/mcp-data';
 
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env file with explicit path
+const envPath = path.resolve(__dirname, '..', '.env');
+console.error('Loading .env file from:', envPath);
+dotenv.config({ path: envPath });
+
 // Enhanced logging function
 function log(level: 'INFO' | 'DEBUG' | 'WARN' | 'ERROR', message: string, data?: any) {
   const timestamp = new Date().toISOString();
-  const logMessage = data ? `[${timestamp}][${level}][Memory MCP] ${message}` : `[${timestamp}][${level}][Memory MCP] ${message}`;
+  const logMessage = `[${timestamp}][${level}][Memory MCP] ${message}`;
   console.error(logMessage);
+
+  // Actually log the data if provided
+  if (data) {
+    console.error(JSON.stringify(data, null, 2));
+  }
 }
 
 // Legacy interfaces for MCP tool compatibility
@@ -39,16 +56,28 @@ class UserAwareKnowledgeGraphManager {
   private defaultUserId = 'default';
 
   constructor() {
-    // Debug environment variables
-    log('DEBUG', 'Environment variables', {
+    // Debug ALL environment variables
+    log('DEBUG', 'Environment variables', process.env);
+
+    // Debug specific variables we care about
+    log('DEBUG', 'MCP Storage Config', {
+      MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
       MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING,
       MONGODB_DATABASE: process.env.MONGODB_DATABASE,
       MONGODB_COLLECTION_PREFIX: process.env.MONGODB_COLLECTION_PREFIX,
-      MCP_USER_ID: process.env.MCP_USER_ID
+      MCP_USER_ID: process.env.MCP_USER_ID,
+      MCP_USER_BASED: process.env.MCP_USER_BASED
     });
 
     this.storage = StorageFactory.createGraphStorageFromEnvironment();
-    log('INFO', 'UserAwareKnowledgeGraphManager initialized with PaginatedGraphStorage');
+
+    // Debug what type of storage was actually created
+    log('DEBUG', 'Storage instance created', {
+      storageType: this.storage.constructor.name,
+      storageClass: typeof this.storage
+    });
+
+    log('INFO', 'UserAwareKnowledgeGraphManager initialized with storage');
   }
 
   async createEntities(entities: LegacyEntity[], userId?: string): Promise<LegacyEntity[]> {
@@ -83,10 +112,28 @@ class UserAwareKnowledgeGraphManager {
 
     try {
       for (const relation of relations) {
+        // Find the actual entity IDs for the from and to entities
+        const fromEntities = await this.storage.searchEntities(effectiveUserId, relation.from);
+        const toEntities = await this.storage.searchEntities(effectiveUserId, relation.to);
+
+        // Find exact matches by name
+        const fromEntity = fromEntities.find(e => e.name === relation.from);
+        const toEntity = toEntities.find(e => e.name === relation.to);
+
+        if (!fromEntity) {
+          log('WARN', `From entity not found: ${relation.from}. Skipping relation.`);
+          continue;
+        }
+
+        if (!toEntity) {
+          log('WARN', `To entity not found: ${relation.to}. Skipping relation.`);
+          continue;
+        }
+
         const newRelation = {
-          relationId: `${relation.from}-${relation.relationType}-${relation.to}`,
-          fromEntityId: relation.from,
-          toEntityId: relation.to,
+          relationId: `${fromEntity.entityId}-${relation.relationType}-${toEntity.entityId}`,
+          fromEntityId: fromEntity.entityId,
+          toEntityId: toEntity.entityId,
           relationType: relation.relationType,
           strength: 1.0,
           metadata: {
@@ -95,6 +142,7 @@ class UserAwareKnowledgeGraphManager {
           }
         };
         await this.storage.saveRelation(effectiveUserId, newRelation);
+        log('DEBUG', `Created relation: ${fromEntity.name} (${fromEntity.entityId}) -> ${toEntity.name} (${toEntity.entityId})`);
       }
 
       log('INFO', `Successfully created ${relations.length} relations for user: ${effectiveUserId}`);
@@ -112,13 +160,27 @@ class UserAwareKnowledgeGraphManager {
     try {
       const results = [];
 
-      for (const obs of observations) {
-        const entityId = `${obs.entityType}-${obs.entityName.toLowerCase().replace(/\s+/g, '-')}`;
+      for (let i = 0; i < observations.length; i++) {
+        const obs = observations[i];
+        log('DEBUG', `Processing observation ${i + 1}/${observations.length}: ${obs.entityName} (${obs.entityType})`);
 
-        let entity = await this.storage.getEntity(effectiveUserId, entityId);
+        const entityId = `${obs.entityType}-${obs.entityName.toLowerCase().replace(/\s+/g, '-')}`;
+        log('DEBUG', `Generated entityId: ${entityId}`);
+
+        log('DEBUG', `About to call storage.getEntity for user: ${effectiveUserId}, entityId: ${entityId}`);
+        let entity;
+        try {
+          entity = await this.storage.getEntity(effectiveUserId, entityId);
+          log('DEBUG', `getEntity completed, result: ${entity ? 'Found existing entity' : 'No existing entity'}`);
+        } catch (error: any) {
+          log('ERROR', `getEntity failed for entityId: ${entityId}`, { error: error.message, stack: error.stack });
+          throw error;
+        }
+
         let entityCreated = false;
 
         if (!entity) {
+          log('DEBUG', `Creating new entity for: ${obs.entityName}`);
           entity = {
             entityId,
             name: obs.entityName,
@@ -130,17 +192,36 @@ class UserAwareKnowledgeGraphManager {
               source: 'mcp-memory-server'
             }
           };
-          await this.storage.saveEntity(effectiveUserId, entity);
-          entityCreated = true;
+
+          log('DEBUG', `About to call storage.saveEntity for new entity: ${entityId}`);
+          try {
+            await this.storage.saveEntity(effectiveUserId, entity);
+            log('DEBUG', `saveEntity completed successfully for new entity: ${entityId}`);
+            entityCreated = true;
+          } catch (error: any) {
+            log('ERROR', `saveEntity failed for new entity: ${entityId}`, { error: error.message, stack: error.stack });
+            throw error;
+          }
         } else {
+          log('DEBUG', `Updating existing entity: ${entityId}, current observations: ${entity.observations.length}`);
           const newObservations = obs.contents.filter(content => !entity!.observations.includes(content));
+          log('DEBUG', `Adding ${newObservations.length} new observations to existing entity`);
+
           entity.observations.push(...newObservations);
           entity.metadata = {
             ...entity.metadata!,
             updatedAt: new Date(),
             createdAt: entity.metadata?.createdAt || new Date()
           };
-          await this.storage.saveEntity(effectiveUserId, entity);
+
+          log('DEBUG', `About to call storage.saveEntity for updated entity: ${entityId}`);
+          try {
+            await this.storage.saveEntity(effectiveUserId, entity);
+            log('DEBUG', `saveEntity completed successfully for updated entity: ${entityId}`);
+          } catch (error: any) {
+            log('ERROR', `saveEntity failed for updated entity: ${entityId}`, { error: error.message, stack: error.stack });
+            throw error;
+          }
         }
 
         results.push({
@@ -148,12 +229,14 @@ class UserAwareKnowledgeGraphManager {
           addedObservations: obs.contents,
           entityCreated
         });
+
+        log('DEBUG', `Completed processing observation ${i + 1}/${observations.length}`);
       }
 
       log('INFO', `Successfully added observations for user: ${effectiveUserId}`);
       return results;
     } catch (error: any) {
-      log('ERROR', `Failed to add observations for user: ${effectiveUserId}`, { error: error.message });
+      log('ERROR', `Failed to add observations for user: ${effectiveUserId}`, { error: error.message, stack: error.stack });
       throw error;
     }
   }

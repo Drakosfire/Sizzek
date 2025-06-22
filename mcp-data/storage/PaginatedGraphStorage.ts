@@ -73,10 +73,21 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
 
     async connect(): Promise<void> {
         if (!this.isConnected) {
-            await this.client.connect();
-            this.isConnected = true;
-            await this.createIndexes();
-            console.log('[PaginatedGraphStorage] Connected to MongoDB');
+            console.log('[PaginatedGraphStorage] Attempting to connect to MongoDB...');
+            try {
+                await this.client.connect();
+                console.log('[PaginatedGraphStorage] MongoDB client connected successfully');
+                this.isConnected = true;
+                console.log('[PaginatedGraphStorage] About to create indexes...');
+                await this.createIndexes();
+                console.log('[PaginatedGraphStorage] Indexes created successfully');
+                console.log('[PaginatedGraphStorage] Connected to MongoDB');
+            } catch (error) {
+                console.error('[PaginatedGraphStorage] Failed to connect to MongoDB:', error);
+                throw error;
+            }
+        } else {
+            console.log('[PaginatedGraphStorage] Already connected to MongoDB');
         }
     }
 
@@ -108,7 +119,11 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
 
     // Individual Entity Operations
     async saveEntity(userId: string, entity: Entity): Promise<void> {
+        console.log(`[PaginatedGraphStorage] saveEntity called for userId: ${userId}, entityId: ${entity.entityId}`);
+
+        console.log(`[PaginatedGraphStorage] About to connect to MongoDB...`);
         await this.connect();
+        console.log(`[PaginatedGraphStorage] MongoDB connection confirmed`);
 
         const now = new Date();
         const document = {
@@ -126,39 +141,90 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
             searchText: this.generateSearchText(entity)
         };
 
-        await this.entitiesCollection.replaceOne(
-            { userId, entityId: entity.entityId },
-            document,
-            { upsert: true }
-        );
+        console.log(`[PaginatedGraphStorage] About to execute replaceOne operation for entityId: ${entity.entityId}`);
+        try {
+            const result = await this.entitiesCollection.replaceOne(
+                { userId, entityId: entity.entityId },
+                document,
+                { upsert: true }
+            );
+            console.log(`[PaginatedGraphStorage] replaceOne completed successfully, matched: ${result.matchedCount}, modified: ${result.modifiedCount}, upserted: ${result.upsertedCount}`);
+        } catch (error) {
+            console.error(`[PaginatedGraphStorage] replaceOne failed for entityId: ${entity.entityId}`, error);
+            throw error;
+        }
 
-        // Update summary index
-        await this.updateSummaryIndex(userId);
+        console.log(`[PaginatedGraphStorage] About to update summary index asynchronously...`);
+        // Update summary index asynchronously (don't block the response)
+        this.updateSummaryIndex(userId);
+        console.log(`[PaginatedGraphStorage] saveEntity completed for entityId: ${entity.entityId}`);
     }
 
     async getEntity(userId: string, entityId: string): Promise<Entity | null> {
+        console.log(`[PaginatedGraphStorage] getEntity called for userId: ${userId}, entityId: ${entityId}`);
+
+        console.log(`[PaginatedGraphStorage] About to connect to MongoDB...`);
         await this.connect();
+        console.log(`[PaginatedGraphStorage] MongoDB connection confirmed`);
 
-        const document = await this.entitiesCollection.findOne({
-            userId,
-            entityId
-        });
+        console.log(`[PaginatedGraphStorage] About to execute findOne operation for entityId: ${entityId}`);
+        try {
+            const document = await this.entitiesCollection.findOne({
+                userId,
+                entityId
+            });
+            console.log(`[PaginatedGraphStorage] findOne completed, result: ${document ? 'Document found' : 'No document found'}`);
 
-        return document ? this.documentToEntity(document) : null;
+            const result = document ? this.documentToEntity(document) : null;
+            console.log(`[PaginatedGraphStorage] getEntity completed for entityId: ${entityId}`);
+            return result;
+        } catch (error) {
+            console.error(`[PaginatedGraphStorage] findOne failed for entityId: ${entityId}`, error);
+            throw error;
+        }
     }
 
     async searchEntities(userId: string, query: string, limit: number = 20): Promise<Entity[]> {
-        await this.connect();
+        console.log(`[PaginatedGraphStorage] searchEntities called with userId: ${userId}, query: "${query}", limit: ${limit}`);
 
-        const documents = await this.entitiesCollection.find({
+        await this.connect();
+        console.log(`[PaginatedGraphStorage] MongoDB connection confirmed for search`);
+
+        // Debug: Show collection name being used
+        console.log(`[PaginatedGraphStorage] Using collection: ${this.entitiesCollection.collectionName}`);
+
+        // Debug: Show the exact query being executed
+        const searchQuery = {
             userId,
             $text: { $search: query }
-        })
-            .sort({ score: { $meta: "textScore" } })
-            .limit(limit)
-            .toArray();
+        };
+        console.log(`[PaginatedGraphStorage] Executing query: ${JSON.stringify(searchQuery, null, 2)}`);
 
-        return documents.map(doc => this.documentToEntity(doc));
+        try {
+            const documents = await this.entitiesCollection.find(searchQuery)
+                .sort({ score: { $meta: "textScore" } })
+                .limit(limit)
+                .toArray();
+
+            console.log(`[PaginatedGraphStorage] Raw MongoDB results: ${documents.length} documents found`);
+
+            if (documents.length > 0) {
+                console.log(`[PaginatedGraphStorage] First result sample:`, {
+                    name: documents[0].name,
+                    entityType: documents[0].entityType,
+                    userId: documents[0].userId,
+                    searchText: documents[0].searchText?.substring(0, 100) + '...'
+                });
+            }
+
+            const entities = documents.map(doc => this.documentToEntity(doc));
+            console.log(`[PaginatedGraphStorage] Converted to ${entities.length} entities`);
+
+            return entities;
+        } catch (error) {
+            console.error(`[PaginatedGraphStorage] searchEntities failed for userId: ${userId}, query: "${query}"`, error);
+            throw error;
+        }
     }
 
     async deleteEntity(userId: string, entityId: string): Promise<void> {
@@ -176,7 +242,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
             ]
         });
 
-        await this.updateSummaryIndex(userId);
+        this.updateSummaryIndex(userId);
     }
 
     // Individual Relation Operations
@@ -203,7 +269,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
             { upsert: true }
         );
 
-        await this.updateSummaryIndex(userId);
+        this.updateSummaryIndex(userId);
     }
 
     async getRelations(userId: string, entityId: string): Promise<Relation[]> {
@@ -229,7 +295,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
             toEntityId
         });
 
-        await this.updateSummaryIndex(userId);
+        this.updateSummaryIndex(userId);
     }
 
     // Batch Operations for Performance
@@ -261,7 +327,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
         }));
 
         await this.entitiesCollection.bulkWrite(operations);
-        await this.updateSummaryIndex(userId);
+        this.updateSummaryIndex(userId);
     }
 
     async getEntitiesBatch(userId: string, entityIds: string[]): Promise<Entity[]> {
@@ -451,7 +517,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
         // Update summary indexes for all users
         const users = await this.listUsers();
         for (const userId of users) {
-            await this.updateSummaryIndex(userId);
+            this.updateSummaryIndex(userId);
         }
     }
 
@@ -492,7 +558,7 @@ export class PaginatedGraphStorage implements UserStorageInterface<KnowledgeGrap
         };
     }
 
-    private async updateSummaryIndex(userId: string): Promise<void> {
+    private updateSummaryIndex(userId: string): void {
         // Make summary updates asynchronous to avoid blocking operations
         setImmediate(async () => {
             try {

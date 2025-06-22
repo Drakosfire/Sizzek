@@ -1,0 +1,379 @@
+# Security-First Development Rules for Sizzek Projects
+
+## 🔒 Core Security Principles
+
+**ALWAYS assume malicious input.** Every external data source (SMS, chat, API calls, form inputs) should be treated as potentially hostile. Validate, sanitize, and scope-check everything.
+
+**Multi-tenant isolation is CRITICAL.** One tenant's data must NEVER be accessible to another. Every database query, API response, and file operation must include tenant scoping.
+
+**Fail securely by default.** When in doubt, deny access rather than allow. Missing auth checks should block, not permit.
+
+## 🛡️ Input Validation & Sanitization
+
+### Always Validate Server-Side
+```typescript
+// ✅ GOOD: Server-side validation with explicit allow-lists
+const validatePhoneNumber = (phone: string): boolean => {
+  return /^\+[1-9]\d{1,14}$/.test(phone); // E.164 format only
+};
+
+// ❌ BAD: Trusting client-side validation
+if (userInput) { /* assuming it's safe */ }
+```
+
+### Use Parameterized Queries ONLY
+```typescript
+// ✅ GOOD: Parameterized query
+const user = await db.query('SELECT * FROM users WHERE tenant_id = $1 AND email = $2', [tenantId, email]);
+
+// ❌ BAD: String concatenation (SQL injection risk)
+const user = await db.query(`SELECT * FROM users WHERE email = '${email}'`);
+```
+
+### Sanitize SMS/Chat Content
+```typescript
+// ✅ GOOD: Sanitize before processing
+const sanitizedMessage = DOMPurify.sanitize(incomingMessage);
+const phonePattern = /^\+[1-9]\d{1,14}$/;
+if (!phonePattern.test(phoneNumber)) {
+  throw new Error('Invalid phone number format');
+}
+```
+
+## 🔐 Authentication & Session Management
+
+### Password Security
+```typescript
+// ✅ GOOD: Use bcrypt with proper salt rounds
+const hashedPassword = await bcrypt.hash(password, 12);
+
+// ✅ GOOD: Secure password validation
+const isValid = await bcrypt.compare(password, hashedPassword);
+
+// ❌ BAD: Plaintext or weak hashing
+const hash = md5(password); // NEVER do this
+```
+
+### Session Management
+```typescript
+// ✅ GOOD: Secure session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET, // Never hardcode
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 30 * 60 * 1000, // 30 minutes
+  sameSite: 'strict'
+}));
+```
+
+### Rate Limiting Critical Endpoints
+```typescript
+// ✅ GOOD: Rate limit authentication endpoints
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  message: 'Too many login attempts',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.post('/api/auth/login', loginLimiter, authController.login);
+```
+
+## 🏢 Multi-Tenant Security
+
+### ALWAYS Include Tenant Scoping
+```typescript
+// ✅ GOOD: Every query includes tenant isolation
+const getConversations = async (userId: string, tenantId: string) => {
+  return await db.query(
+    'SELECT * FROM conversations WHERE user_id = $1 AND tenant_id = $2',
+    [userId, tenantId]
+  );
+};
+
+// ❌ BAD: Missing tenant isolation
+const getConversations = async (userId: string) => {
+  return await db.query('SELECT * FROM conversations WHERE user_id = $1', [userId]);
+};
+```
+
+### Prevent IDOR (Insecure Direct Object References)
+```typescript
+// ✅ GOOD: Verify ownership before access
+const getDocument = async (docId: string, userId: string, tenantId: string) => {
+  const doc = await db.query(
+    'SELECT * FROM documents WHERE id = $1 AND user_id = $2 AND tenant_id = $3',
+    [docId, userId, tenantId]
+  );
+  if (!doc) throw new Error('Document not found or access denied');
+  return doc;
+};
+```
+
+### Tenant Context Middleware
+```typescript
+// ✅ GOOD: Centralized tenant validation
+const validateTenantAccess = async (req: Request, res: Response, next: NextFunction) => {
+  const { tenantId } = req.params;
+  const userTenantId = req.user?.tenantId;
+  
+  if (!tenantId || tenantId !== userTenantId) {
+    return res.status(403).json({ error: 'Tenant access denied' });
+  }
+  next();
+};
+```
+
+## 🔒 PII Protection & Encryption
+
+### Encrypt Sensitive Data at Rest
+```typescript
+// ✅ GOOD: Encrypt PII before storing
+const encryptPII = (data: string): string => {
+  const algorithm = 'aes-256-gcm';
+  const key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex');
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipher(algorithm, key);
+  // ... proper encryption implementation
+};
+
+// ✅ GOOD: Store only what's necessary
+interface UserProfile {
+  id: string;
+  email: string; // encrypted
+  phoneHash: string; // hashed, not plaintext
+  tenantId: string;
+  // Don't store: SSN, full DOB, etc. unless absolutely required
+}
+```
+
+### Secure SMS Handling
+```typescript
+// ✅ GOOD: Sanitize and validate SMS data
+const processSMSWebhook = async (req: Request, res: Response) => {
+  // Immediate response to prevent Twilio timeouts
+  res.set('Content-Type', 'text/xml');
+  res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  
+  // Validate Twilio signature
+  const signature = req.headers['x-twilio-signature'];
+  if (!twilio.validateRequest(authToken, signature, url, req.body)) {
+    logger.warn('Invalid Twilio signature');
+    return;
+  }
+  
+  // Process asynchronously
+  setImmediate(() => processSMSMessage(req.body));
+};
+```
+
+### Redact PII from Logs
+```typescript
+// ✅ GOOD: Safe logging without PII
+logger.info(`SMS received from user ${userId} in tenant ${tenantId}`);
+
+// ❌ BAD: Logging PII
+logger.info(`SMS received: ${JSON.stringify(fullMessageWithPhone)}`);
+```
+
+## 🌐 MCP Server Security
+
+### Secure MCP Tool Implementations
+```typescript
+// ✅ GOOD: Validate all MCP tool parameters
+const createScheduledTask = async (args: CreateTaskArgs, context: MCPContext) => {
+  const { userId, tenantId } = context;
+  
+  // Validate required fields
+  if (!args.title || !args.scheduleType) {
+    throw new Error('Missing required parameters');
+  }
+  
+  // Validate schedule data
+  if (args.scheduleType === 'weekly' && !args.dayOfWeek) {
+    throw new Error('dayOfWeek required for weekly tasks');
+  }
+  
+  // Scope to user/tenant
+  return await taskManager.createTask({
+    ...args,
+    userId,
+    tenantId,
+    createdAt: new Date()
+  });
+};
+```
+
+### MCP Server Environment Isolation
+```typescript
+// ✅ GOOD: Proper environment variable handling
+const getMCPStorage = () => {
+  const mongoUri = process.env.NODE_ENV === 'production' 
+    ? process.env.MONGODB_CONNECTION_STRING 
+    : 'mongodb://localhost:27017';
+    
+  return new PaginatedGraphStorage({
+    connectionString: mongoUri,
+    database: process.env.MONGODB_DATABASE || 'LibreChat',
+    collection: process.env.MONGODB_COLLECTION || 'mcp_memory',
+    userId: process.env.MCP_USER_ID
+  });
+};
+```
+
+## 🚫 Security Anti-Patterns to AVOID
+
+### Never Trust Client Data
+```typescript
+// ❌ BAD: Trusting client-provided tenant ID
+app.post('/api/data', (req, res) => {
+  const { tenantId } = req.body; // NEVER trust this
+  // ... dangerous database operations
+});
+
+// ✅ GOOD: Derive tenant from authenticated session
+app.post('/api/data', authenticateMiddleware, (req, res) => {
+  const tenantId = req.user.tenantId; // From verified session
+  // ... safe operations
+});
+```
+
+### Never Log Sensitive Data
+```typescript
+// ❌ BAD: Logging full objects with potential PII
+logger.debug(`Processing user data: ${JSON.stringify(userData)}`);
+
+// ✅ GOOD: Log only necessary identifiers
+logger.debug(`Processing user ${userData.id} in tenant ${userData.tenantId}`);
+```
+
+### Never Hardcode Secrets
+```typescript
+// ❌ BAD: Hardcoded secrets
+const TWILIO_AUTH_TOKEN = 'your_token_here';
+
+// ✅ GOOD: Environment variables
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+if (!TWILIO_AUTH_TOKEN) {
+  throw new Error('TWILIO_AUTH_TOKEN environment variable required');
+}
+```
+
+## 🔧 Configuration Security
+
+### Secure Express.js Setup
+```typescript
+// ✅ GOOD: Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // Minimize unsafe-inline
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// Body parser limits
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+```
+
+### Database Security
+```typescript
+// ✅ GOOD: Secure MongoDB connection
+const mongoOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  ssl: process.env.NODE_ENV === 'production',
+  authSource: 'admin',
+  retryWrites: true,
+  w: 'majority'
+};
+```
+
+## 📊 Monitoring & Incident Response
+
+### Security Event Logging
+```typescript
+// ✅ GOOD: Log security events without PII
+const logSecurityEvent = (event: string, userId: string, tenantId: string, details?: object) => {
+  logger.warn({
+    event,
+    userId,
+    tenantId,
+    timestamp: new Date().toISOString(),
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    ...details
+  });
+};
+
+// Usage examples:
+logSecurityEvent('FAILED_LOGIN', userId, tenantId, { attempts: 3 });
+logSecurityEvent('UNAUTHORIZED_ACCESS', userId, tenantId, { resource: '/api/admin' });
+logSecurityEvent('TENANT_ISOLATION_VIOLATION', userId, tenantId, { attemptedTenant: 'other-tenant' });
+```
+
+### Error Handling
+```typescript
+// ✅ GOOD: Secure error handling
+const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
+  // Log full error details server-side
+  logger.error('Application error', {
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    userId: req.user?.id,
+    tenantId: req.user?.tenantId,
+    path: req.path,
+    method: req.method
+  });
+  
+  // Return generic error to client
+  res.status(500).json({
+    error: 'Internal server error',
+    requestId: req.id // For correlation
+  });
+};
+```
+
+## 🎯 Quick Security Checklist
+
+Before deploying ANY feature:
+
+- [ ] All user inputs validated and sanitized
+- [ ] Database queries use parameterized statements
+- [ ] Tenant isolation enforced on all data access
+- [ ] No PII in logs or error messages
+- [ ] Authentication required for protected endpoints
+- [ ] Rate limiting on sensitive endpoints
+- [ ] HTTPS enforced in production
+- [ ] Secrets in environment variables, not code
+- [ ] Error handling doesn't leak information
+- [ ] Security headers configured (helmet.js)
+- [ ] Dependencies scanned for vulnerabilities (`npm audit`)
+- [ ] Access control tests written and passing
+
+## 🔄 Regular Security Maintenance
+
+- **Weekly**: Run `npm audit` and update vulnerable packages
+- **Monthly**: Review access logs for suspicious patterns
+- **Quarterly**: Rotate secrets and API keys
+- **Per feature**: Threat model new functionality
+- **Per release**: Security code review
+
+## 📚 Security Resources
+
+- OWASP Top 10: https://owasp.org/www-project-top-ten/
+- Node.js Security Checklist: https://blog.risingstack.com/node-js-security-checklist/
+- MongoDB Security: https://docs.mongodb.com/manual/security/
+- Express Security: https://expressjs.com/en/advanced/best-practice-security.html
+
+Remember: **Security is not a feature to be added later - it's a foundation to build upon.** 

@@ -32,6 +32,16 @@ export {
 } from './storage/StorageFactory.js';
 export type { UnifiedStorageConfig } from './storage/StorageFactory.js';
 
+// Testing utilities
+export {
+    TestDatabase,
+    createTestDatabase,
+    setupTestDatabase,
+    cleanupTestDatabase,
+    createTestStorage
+} from './testing/TestDatabase.js';
+export type { TestDatabaseConfig } from './testing/TestDatabase.js';
+
 // Version and metadata
 export const VERSION = '1.0.0';
 export const SUPPORTED_HOSTS = ['LibreChat', 'Generic MCP Host'];
