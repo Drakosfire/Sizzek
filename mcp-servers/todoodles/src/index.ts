@@ -95,9 +95,39 @@ export class UserAwareTodoodlesManager {
     }
 
     async handleToolCall(request: any) {
+        // ===== COMPREHENSIVE REQUEST LOGGING =====
+        const startTime = Date.now();
+        const requestId = Math.random().toString(36).substr(2, 9);
+
+        log('INFO', `[REQUEST-${requestId}] ===== NEW TOOL CALL REQUEST =====`);
+        log('INFO', `[REQUEST-${requestId}] Tool: ${request.params?.name || 'UNKNOWN'}`);
+        log('INFO', `[REQUEST-${requestId}] Full request object:`, {
+            jsonrpc: request.jsonrpc,
+            id: request.id,
+            method: request.method,
+            params: request.params,
+            meta: request.meta || 'NOT_PRESENT',
+            headers: request.headers || 'NOT_PRESENT',
+            user: request.user || 'NOT_PRESENT',
+            userId: request.userId || 'NOT_PRESENT',
+            context: request.context || 'NOT_PRESENT'
+        });
+        log('INFO', `[REQUEST-${requestId}] Environment context:`, {
+            MCP_USER_ID: process.env.MCP_USER_ID || 'NOT_SET',
+            MCP_USER_BASED: process.env.MCP_USER_BASED || 'NOT_SET',
+            MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE || 'NOT_SET',
+            MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING ? '[SET]' : '[NOT_SET]',
+            MONGODB_DATABASE: process.env.MONGODB_DATABASE || 'NOT_SET',
+            MONGODB_COLLECTION: process.env.MONGODB_COLLECTION || 'NOT_SET'
+        });
+
         const userId = extractUserId(request);
+        log('INFO', `[REQUEST-${requestId}] Extracted userId: "${userId || 'NONE'}"`);
+        log('INFO', `[REQUEST-${requestId}] User-based storage: ${this.isUserBased}`);
 
         try {
+            log('INFO', `[REQUEST-${requestId}] Starting tool execution: ${request.params.name}`);
+
             switch (request.params.name) {
                 case "add_todoodle": {
                     const { text, category, priority = 'medium', dueDate } = request.params.arguments;
@@ -182,18 +212,32 @@ export class UserAwareTodoodlesManager {
                 }
 
                 case "get_all_todoodles": {
+                    log('INFO', `[REQUEST-${requestId}] Processing get_all_todoodles`);
                     const { completed } = request.params.arguments;
+                    log('INFO', `[REQUEST-${requestId}] Completed filter: ${completed}`);
+                    log('INFO', `[REQUEST-${requestId}] Using userId: "${userId || 'NONE'}"`);
+
                     let todoodles;
 
+                    log('INFO', `[REQUEST-${requestId}] About to fetch todos from storage...`);
+                    const fetchStartTime = Date.now();
+
                     if (completed === true) {
+                        log('INFO', `[REQUEST-${requestId}] Fetching completed todos only`);
                         todoodles = (await this.getTodos(userId)).filter(t => t.completed);
                     } else if (completed === false) {
+                        log('INFO', `[REQUEST-${requestId}] Fetching incomplete todos only`);
                         todoodles = await this.getIncompleteTodos(userId);
                     } else {
+                        log('INFO', `[REQUEST-${requestId}] Fetching all todos`);
                         todoodles = await this.getTodos(userId);
                     }
 
-                    return {
+                    const fetchDuration = Date.now() - fetchStartTime;
+                    log('INFO', `[REQUEST-${requestId}] Fetched ${todoodles.length} todos in ${fetchDuration}ms`);
+                    log('INFO', `[REQUEST-${requestId}] Todo sample:`, todoodles.slice(0, 2).map(t => ({ id: t.id, text: t.text, completed: t.completed })));
+
+                    const response = {
                         content: [
                             {
                                 type: "text",
@@ -201,6 +245,9 @@ export class UserAwareTodoodlesManager {
                             }
                         ]
                     };
+
+                    log('INFO', `[REQUEST-${requestId}] Returning response with ${response.content[0].text.length} characters`);
+                    return response;
                 }
 
                 case "delete_todoodle": {
@@ -377,8 +424,17 @@ export class UserAwareTodoodlesManager {
                     };
             }
         } catch (error: any) {
-            log('ERROR', `Tool ${request.params.name} failed for user ${userId}: ${error.message}`);
-            return {
+            const duration = Date.now() - startTime;
+            log('ERROR', `[REQUEST-${requestId}] Tool ${request.params.name} FAILED for user ${userId} after ${duration}ms: ${error.message}`);
+            log('ERROR', `[REQUEST-${requestId}] Error stack:`, error.stack);
+            log('ERROR', `[REQUEST-${requestId}] Error details:`, {
+                name: error.name,
+                message: error.message,
+                code: error.code || 'NO_CODE',
+                cause: error.cause || 'NO_CAUSE'
+            });
+
+            const errorResponse = {
                 content: [
                     {
                         type: "text",
@@ -387,6 +443,12 @@ export class UserAwareTodoodlesManager {
                 ],
                 isError: true
             };
+
+            log('ERROR', `[REQUEST-${requestId}] Returning error response`);
+            return errorResponse;
+        } finally {
+            const totalDuration = Date.now() - startTime;
+            log('INFO', `[REQUEST-${requestId}] ===== REQUEST COMPLETED in ${totalDuration}ms =====`);
         }
     }
 
@@ -473,20 +535,43 @@ export class UserAwareTodoodlesManager {
 
     private async getTodoData(userId?: string): Promise<TodoodleData> {
         const effectiveUserId = userId || this.getUserId();
+        log('INFO', `[GETTODODATA] Starting getTodoData for user: "${effectiveUserId}"`);
+        log('INFO', `[GETTODODATA] isUserBased: ${this.isUserBased}`);
 
         try {
             let data;
             if (this.isUserBased) {
-                // log('DEBUG', `Loading data for user: ${effectiveUserId}`);
+                log('INFO', `[GETTODODATA] Loading user-specific data for: "${effectiveUserId}"`);
+                const loadStartTime = Date.now();
                 data = await this.storage.loadForUser(effectiveUserId);
+                const loadDuration = Date.now() - loadStartTime;
+                log('INFO', `[GETTODODATA] storage.loadForUser completed in ${loadDuration}ms`);
             } else {
-                log('DEBUG', `Loading default data`);
+                log('INFO', `[GETTODODATA] Loading default data (non-user-based)`);
+                const loadStartTime = Date.now();
                 data = await this.storage.load();
+                const loadDuration = Date.now() - loadStartTime;
+                log('INFO', `[GETTODODATA] storage.load completed in ${loadDuration}ms`);
             }
-            // log('DEBUG', `Loaded ${data.items?.length || 0} todos for user ${effectiveUserId}`);
+
+            log('INFO', `[GETTODODATA] Successfully loaded ${data.items?.length || 0} todos for user ${effectiveUserId}`);
+            log('INFO', `[GETTODODATA] Data structure:`, {
+                itemCount: data.items?.length || 0,
+                hasMetadata: !!data.metadata,
+                lastId: data.metadata?.lastId,
+                version: data.metadata?.version,
+                updatedAt: data.metadata?.updatedAt
+            });
+
             return data;
         } catch (error: any) {
-            log('ERROR', `Failed to load todo data for user ${effectiveUserId}: ${error.message}`);
+            log('ERROR', `[GETTODODATA] Failed to load todo data for user ${effectiveUserId}: ${error.message}`);
+            log('ERROR', `[GETTODODATA] Error details:`, {
+                name: error.name,
+                message: error.message,
+                code: error.code || 'NO_CODE',
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -613,37 +698,51 @@ export class UserAwareTodoodlesManager {
 
     async getTodos(userId?: string): Promise<TodoodleItem[]> {
         const effectiveUserId = userId || this.getUserId();
-        const data = await this.getTodoData(effectiveUserId);
+        log('INFO', `[GETTODOS] Starting getTodos for user: "${effectiveUserId}"`);
 
-        // Clean up any null values that should be undefined for optional fields
-        const cleanedItems = data.items.map(item => {
-            const cleaned: TodoodleItem = {
-                id: item.id,
-                text: item.text,
-                createdAt: item.createdAt,
-                completed: item.completed,
-                priority: item.priority
-            };
+        try {
+            log('INFO', `[GETTODOS] Calling getTodoData for user: "${effectiveUserId}"`);
+            const dataStartTime = Date.now();
+            const data = await this.getTodoData(effectiveUserId);
+            const dataDuration = Date.now() - dataStartTime;
 
-            // Only add optional fields if they exist and aren't null
-            if (item.category && item.category !== null) {
-                cleaned.category = item.category;
-            }
-            if (item.dueDate && item.dueDate !== null) {
-                cleaned.dueDate = item.dueDate;
-            }
-            if (item.completedAt && item.completedAt !== null) {
-                cleaned.completedAt = item.completedAt;
-            }
-            if (item.timeToComplete && item.timeToComplete !== null) {
-                cleaned.timeToComplete = item.timeToComplete;
-            }
+            log('INFO', `[GETTODOS] getTodoData completed in ${dataDuration}ms, got ${data.items?.length || 0} items`);
+            log('INFO', `[GETTODOS] Data metadata:`, data.metadata);
 
-            return cleaned;
-        });
+            // Clean up any null values that should be undefined for optional fields
+            const cleanedItems = data.items.map(item => {
+                const cleaned: TodoodleItem = {
+                    id: item.id,
+                    text: item.text,
+                    createdAt: item.createdAt,
+                    completed: item.completed,
+                    priority: item.priority
+                };
 
-        // log('DEBUG', `Retrieved ${cleanedItems.length} todos for user ${effectiveUserId}`);
-        return cleanedItems;
+                // Only add optional fields if they exist and aren't null
+                if (item.category && item.category !== null) {
+                    cleaned.category = item.category;
+                }
+                if (item.dueDate && item.dueDate !== null) {
+                    cleaned.dueDate = item.dueDate;
+                }
+                if (item.completedAt && item.completedAt !== null) {
+                    cleaned.completedAt = item.completedAt;
+                }
+                if (item.timeToComplete && item.timeToComplete !== null) {
+                    cleaned.timeToComplete = item.timeToComplete;
+                }
+
+                return cleaned;
+            });
+
+            log('INFO', `[GETTODOS] Retrieved and cleaned ${cleanedItems.length} todos for user ${effectiveUserId}`);
+            return cleanedItems;
+        } catch (error: any) {
+            log('ERROR', `[GETTODOS] Failed to get todos for user "${effectiveUserId}": ${error.message}`);
+            log('ERROR', `[GETTODOS] Error stack:`, error.stack);
+            throw error;
+        }
     }
 
     async getIncompleteTodos(userId?: string): Promise<TodoodleItem[]> {
