@@ -1,33 +1,38 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { StorageFactory } from '@sizzek/mcp-data';
+import { TodoodlesWebUIManager } from './web-ui-integration.js';
 
-// Get the directory path of the current module
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Use environment variable for file path, with a clear error if not set
-const TODOS_FILE_PATH = process.env.TODOS_FILE_PATH;
-if (!TODOS_FILE_PATH) {
-    console.error('Error: TODOS_FILE_PATH environment variable is not set');
-    console.error('Please set TODOS_FILE_PATH in your environment or LibreChat configuration');
-    process.exit(1);
+// Load environment variables from .env file with explicit path
+const envPath = path.resolve(__dirname, '..', '.env');
+console.error(`[Todoodles] Loading .env file from: ${envPath}`);
+dotenv.config({ path: envPath });
+
+// Enhanced logging function
+function log(level: 'INFO' | 'DEBUG' | 'WARN' | 'ERROR', message: string, data?: any) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}][${level}][Todoodles MCP] ${message}`;
+    console.error(logMessage);
+
+    if (data && process.env.MCP_DEBUG === 'true') {
+        console.error(JSON.stringify(data, null, 2));
+    }
 }
 
-// Now we know TODOS_FILE_PATH is defined, we can use it safely
-const todosFilePath: string = TODOS_FILE_PATH;
-
-console.error(`Todoodles MCP Server starting...`);
-console.error(`Todos will be saved to: ${todosFilePath}`);
-
-// Simple interface for our todo items
+// Todoodles data interfaces
 interface TodoodleItem {
     id: string;
     text: string;
@@ -35,1011 +40,1292 @@ interface TodoodleItem {
     completed: boolean;
     completedAt?: string;
     timeToComplete?: number; // in milliseconds
-    category?: string; // Optional category for organizing todoodles
-    priority: 'low' | 'medium' | 'high' | 'urgent'; // Priority level
-    dueDate?: string; // Optional due date in ISO format
+    category?: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    dueDate?: string; // ISO format
 }
 
-// Our todo list manager
-class TodoodleListManager {
-    private todoodles: TodoodleItem[] = [];
-    private lastId: number = 0;
-    private isSaving: boolean = false;
-    private saveQueue: Promise<void> = Promise.resolve();
+interface TodoodleData {
+    items: TodoodleItem[];
+    metadata: {
+        lastId: number;
+        version: string;
+        updatedAt: string;
+        totalItems: number;
+        completedItems: number;
+    };
+}
+
+// User-aware Todoodles Manager using shared storage
+export class UserAwareTodoodlesManager {
+    private storage: ReturnType<typeof this.createStorage>;
+    private defaultUserId = 'default';
+    private isUserBased: boolean;
+    private operationLocks: Map<string, Promise<any>> = new Map();
+
 
     constructor() {
-        this.load().catch(error => {
-            console.error('Error loading todoodles:', error);
+        // Debug environment variables
+        log('DEBUG', 'Environment variables', {
+            MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
+            MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING?.replace(/\/\/.*@/, '//***@'), // Hide credentials
+            MONGODB_DATABASE: process.env.MONGODB_DATABASE,
+            MONGODB_COLLECTION: process.env.MONGODB_COLLECTION,
+            MCP_USER_ID: process.env.MCP_USER_ID,
+            MCP_USER_BASED: process.env.MCP_USER_BASED,
+            TODOS_FILE_PATH: process.env.TODOS_FILE_PATH
         });
+
+        this.isUserBased = process.env.MCP_USER_BASED === 'true';
+        this.storage = this.createStorage();
+
+        log('INFO', 'UserAwareTodoodlesManager initialized with storage type: ' + (process.env.MCP_STORAGE_TYPE || 'json') + ', userBased: ' + this.isUserBased);
     }
 
-    private async load(): Promise<void> {
-        try {
-            console.error(`Loading todoodles from ${todosFilePath}`);
+    async initialize() {
+        // Initialize storage if needed
+        return Promise.resolve();
+    }
 
-            // Ensure the directory exists
-            const dirPath = path.dirname(todosFilePath);
-            try {
-                await fs.access(dirPath);
-            } catch (error) {
-                console.error(`Directory ${dirPath} does not exist, creating it...`);
-                await fs.mkdir(dirPath, { recursive: true });
-            }
-
-            // Try to read the file
-            try {
-                const data = await fs.readFile(todosFilePath, 'utf-8');
-                this.todoodles = JSON.parse(data);
-                // Validate the data is an array
-                if (!Array.isArray(this.todoodles)) {
-                    console.error('Invalid todoodles data format, initializing with empty array');
-                    this.todoodles = [];
-                }
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-                    console.error(`No existing todoodles file found at ${todosFilePath}, creating new file`);
-                    this.todoodles = [];
-                    // Initialize the file with an empty array
-                    await fs.writeFile(todosFilePath, JSON.stringify(this.todoodles, null, 2));
-                } else if (error instanceof SyntaxError) {
-                    console.error('Invalid JSON in todoodles file, initializing with empty array');
-                    this.todoodles = [];
-                    // Reinitialize the file with an empty array
-                    await fs.writeFile(todosFilePath, JSON.stringify(this.todoodles, null, 2));
-                } else {
-                    throw error;
-                }
-            }
-
-            // Find the highest ID in existing todoodles
-            this.lastId = this.todoodles.reduce((max, todoodle) => {
-                const id = parseInt(todoodle.id);
-                return id > max ? id : max;
-            }, 0);
-            console.error(`Loaded ${this.todoodles.length} todoodles, last ID: ${this.lastId}`);
-        } catch (error) {
-            console.error('Error loading todoodles:', error);
-            // Initialize with empty state if there's an error
-            this.todoodles = [];
-            this.lastId = 0;
-            // Try to save the empty state
-            try {
-                await fs.writeFile(todosFilePath, JSON.stringify(this.todoodles, null, 2));
-            } catch (saveError) {
-                console.error('Failed to save empty todoodles state:', saveError);
-            }
+    async cleanup() {
+        // Close storage connections to prevent hanging
+        if (this.storage && 'disconnect' in this.storage && typeof (this.storage as any).disconnect === 'function') {
+            await (this.storage as any).disconnect();
         }
     }
 
-    private async save(): Promise<void> {
-        // If already saving, queue this save operation
-        if (this.isSaving) {
-            return new Promise((resolve, reject) => {
-                this.saveQueue = this.saveQueue
-                    .then(() => this.performSave())
-                    .then(resolve)
-                    .catch(reject);
-            });
-        }
+    async handleToolCall(request: any) {
+        // ===== COMPREHENSIVE REQUEST LOGGING =====
+        const startTime = Date.now();
+        const requestId = Math.random().toString(36).substr(2, 9);
 
-        return this.performSave();
-    }
+        log('INFO', `[REQUEST-${requestId}] ===== NEW TOOL CALL REQUEST =====`);
+        log('INFO', `[REQUEST-${requestId}] Tool: ${request.params?.name || 'UNKNOWN'}`);
+        log('INFO', `[REQUEST-${requestId}] Full request object:`, {
+            jsonrpc: request.jsonrpc,
+            id: request.id,
+            method: request.method,
+            params: request.params,
+            meta: request.meta || 'NOT_PRESENT',
+            headers: request.headers || 'NOT_PRESENT',
+            user: request.user || 'NOT_PRESENT',
+            userId: request.userId || 'NOT_PRESENT',
+            context: request.context || 'NOT_PRESENT'
+        });
+        log('INFO', `[REQUEST-${requestId}] Environment context:`, {
+            MCP_USER_ID: process.env.MCP_USER_ID || 'NOT_SET',
+            MCP_USER_BASED: process.env.MCP_USER_BASED || 'NOT_SET',
+            MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE || 'NOT_SET',
+            MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING ? '[SET]' : '[NOT_SET]',
+            MONGODB_DATABASE: process.env.MONGODB_DATABASE || 'NOT_SET',
+            MONGODB_COLLECTION: process.env.MONGODB_COLLECTION || 'NOT_SET'
+        });
 
-    private async performSave(): Promise<void> {
-        this.isSaving = true;
+        const userId = extractUserId(request);
+        log('INFO', `[REQUEST-${requestId}] Extracted userId: "${userId || 'NONE'}"`);
+        log('INFO', `[REQUEST-${requestId}] User-based storage: ${this.isUserBased}`);
+
         try {
-            console.error(`Saving ${this.todoodles.length} todoodles to ${todosFilePath}`);
+            log('INFO', `[REQUEST-${requestId}] Starting tool execution: ${request.params.name}`);
 
-            // Create backup of existing file if it exists
-            try {
-                const backupDir = path.join(path.dirname(todosFilePath), 'backups');
-                await fs.mkdir(backupDir, { recursive: true });
+            switch (request.params.name) {
+                case "add_todoodle": {
+                    const { text, category, priority = 'medium', dueDate } = request.params.arguments;
 
-                if (await fs.access(todosFilePath).then(() => true).catch(() => false)) {
-                    // Read the current file to ensure it's valid JSON
-                    const currentData = await fs.readFile(todosFilePath, 'utf-8');
-                    try {
-                        // Validate the current data is valid JSON
-                        JSON.parse(currentData);
+                    if (!text) {
+                        return {
+                            content: [{ type: "text", text: "Error: text is required" }],
+                            isError: true
+                        };
+                    }
 
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                        const backupPath = path.join(backupDir, `todoodles_${timestamp}.json`);
+                    if (priority && !['low', 'medium', 'high', 'urgent'].includes(priority)) {
+                        return {
+                            content: [{ type: "text", text: "Error: Invalid priority" }],
+                            isError: true
+                        };
+                    }
 
-                        // Write the backup
-                        await fs.writeFile(backupPath, currentData);
+                    // Validate due date format if provided
+                    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+                        return {
+                            content: [{ type: "text", text: "Error: Invalid date format. Use YYYY-MM-DD" }],
+                            isError: true
+                        };
+                    }
 
-                        // Keep only the last 5 backups
-                        const backups = await fs.readdir(backupDir);
-                        if (backups.length > 5) {
-                            const sortedBackups = backups
-                                .filter(f => f.startsWith('todoodles_'))
-                                .sort()
-                                .reverse();
-                            for (const oldBackup of sortedBackups.slice(5)) {
-                                await fs.unlink(path.join(backupDir, oldBackup));
+                    const todoodle = await this.addTodo(text, category, priority, dueDate, userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Todoodle added successfully: ${todoodle.text} (ID: ${todoodle.id})`
                             }
-                        }
-                    } catch (parseError) {
-                        console.error('Failed to validate current todoodles file:', parseError);
-                        // Don't create a backup if the current file is invalid
-                        return;
+                        ]
+                    };
+                }
+
+                case "complete_todoodle": {
+                    const { id } = request.params.arguments;
+
+                    if (!id) {
+                        return {
+                            content: [{ type: "text", text: "Error: id is required" }],
+                            isError: true
+                        };
+                    }
+
+                    // Check if it's already completed first
+                    const existingData = await this.getTodoData(userId);
+                    const existing = existingData.items.find(item => item.id === id);
+
+                    if (!existing) {
+                        return {
+                            content: [{ type: "text", text: "Error: Todoodle not found" }],
+                            isError: true
+                        };
+                    }
+
+                    if (existing.completed) {
+                        return {
+                            content: [{ type: "text", text: "Error: Todoodle is already completed" }],
+                            isError: true
+                        };
+                    }
+
+                    const todoodle = await this.completeTodo(id, userId);
+                    if (todoodle) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Todoodle marked as completed: ${todoodle.text}`
+                                }
+                            ]
+                        };
+                    } else {
+                        return {
+                            content: [{ type: "text", text: "Error: Todoodle not found" }],
+                            isError: true
+                        };
                     }
                 }
-            } catch (error) {
-                console.error('Failed to create backup:', error);
+
+                case "get_all_todoodles": {
+                    log('INFO', `[REQUEST-${requestId}] Processing get_all_todoodles`);
+                    const { completed } = request.params.arguments;
+                    log('INFO', `[REQUEST-${requestId}] Completed filter: ${completed}`);
+                    log('INFO', `[REQUEST-${requestId}] Using userId: "${userId || 'NONE'}"`);
+
+                    let todoodles;
+
+                    log('INFO', `[REQUEST-${requestId}] About to fetch todos from storage...`);
+                    const fetchStartTime = Date.now();
+
+                    if (completed === true) {
+                        log('INFO', `[REQUEST-${requestId}] Fetching completed todos only`);
+                        todoodles = (await this.getTodos(userId)).filter(t => t.completed);
+                    } else if (completed === false) {
+                        log('INFO', `[REQUEST-${requestId}] Fetching incomplete todos only`);
+                        todoodles = await this.getIncompleteTodos(userId);
+                    } else {
+                        log('INFO', `[REQUEST-${requestId}] Fetching all todos`);
+                        todoodles = await this.getTodos(userId);
+                    }
+
+                    const fetchDuration = Date.now() - fetchStartTime;
+                    log('INFO', `[REQUEST-${requestId}] Fetched ${todoodles.length} todos in ${fetchDuration}ms`);
+                    log('INFO', `[REQUEST-${requestId}] Todo sample:`, todoodles.slice(0, 2).map(t => ({ id: t.id, text: t.text, completed: t.completed })));
+
+                    const response = {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(todoodles, null, 2)
+                            }
+                        ]
+                    };
+
+                    log('INFO', `[REQUEST-${requestId}] Returning response with ${response.content[0].text.length} characters`);
+                    return response;
+                }
+
+                case "delete_todoodle": {
+                    const { id } = request.params.arguments;
+
+                    if (!id) {
+                        return {
+                            content: [{ type: "text", text: "Error: id is required" }],
+                            isError: true
+                        };
+                    }
+
+                    const result = await this.deleteTodo(id, userId);
+
+                    if (result.success && result.deletedTodo) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Deleted todoodle: "${result.deletedTodo.text}"`
+                                }
+                            ]
+                        };
+                    } else {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "Error: Todoodle not found"
+                                }
+                            ],
+                            isError: true
+                        };
+                    }
+                }
+
+                case "search_todoodles": {
+                    const { query } = request.params.arguments;
+
+                    if (!query) {
+                        return {
+                            content: [{ type: "text", text: "Error: query is required" }],
+                            isError: true
+                        };
+                    }
+
+                    const todoodles = await this.searchTodos(query, userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(todoodles, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_todoodles_by_category": {
+                    const { category } = request.params.arguments;
+
+                    if (!category) {
+                        return {
+                            content: [{ type: "text", text: "Error: category is required" }],
+                            isError: true
+                        };
+                    }
+
+                    const todoodles = await this.getTodosByCategory(category, userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(todoodles, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_todoodles_by_priority": {
+                    const { priority } = request.params.arguments;
+
+                    if (!priority) {
+                        return {
+                            content: [{ type: "text", text: "Error: priority is required" }],
+                            isError: true
+                        };
+                    }
+
+                    if (!['low', 'medium', 'high', 'urgent'].includes(priority)) {
+                        return {
+                            content: [{ type: "text", text: "Error: Invalid priority" }],
+                            isError: true
+                        };
+                    }
+
+                    const todoodles = await this.getTodosByPriority(priority, userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(todoodles, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_due_todoodles": {
+                    const { overdue_only, days } = request.params.arguments;
+
+                    if (days !== undefined && (typeof days !== 'number' || days < 0)) {
+                        return {
+                            content: [{ type: "text", text: "Error: days must be non-negative" }],
+                            isError: true
+                        };
+                    }
+
+                    let todoodles;
+                    if (overdue_only) {
+                        todoodles = await this.getOverdueTodos(userId);
+                    } else {
+                        todoodles = await this.getDueTodos(userId);
+                    }
+
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(todoodles, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_categories": {
+                    const categories = await this.getCategories(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(categories, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_todoodles_stats": {
+                    const stats = await this.getStats(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: JSON.stringify(stats, null, 2)
+                            }
+                        ]
+                    };
+                }
+
+                case "get_web_ui": {
+                    log('INFO', `[TODOODLES-WEB-UI-SERVER] get_web_ui called with extracted userId: "${userId}"`);
+                    log('INFO', `[TODOODLES-WEB-UI-SERVER] Passing userId to web UI: "${userId || 'default'}"`);
+                    return await webUIManager.handleGetWebUI(userId || 'default');
+                }
+
+                default:
+                    if (!request.params.name) {
+                        return {
+                            content: [{ type: "text", text: "Error: Tool name is required" }],
+                            isError: true
+                        };
+                    }
+                    return {
+                        content: [{ type: "text", text: `Error: Unknown tool: ${request.params.name}` }],
+                        isError: true
+                    };
+            }
+        } catch (error: any) {
+            const duration = Date.now() - startTime;
+            log('ERROR', `[REQUEST-${requestId}] Tool ${request.params.name} FAILED for user ${userId} after ${duration}ms: ${error.message}`);
+            log('ERROR', `[REQUEST-${requestId}] Error stack:`, error.stack);
+            log('ERROR', `[REQUEST-${requestId}] Error details:`, {
+                name: error.name,
+                message: error.message,
+                code: error.code || 'NO_CODE',
+                cause: error.cause || 'NO_CAUSE'
+            });
+
+            const errorResponse = {
+                content: [
+                    {
+                        type: "text",
+                        text: `Error: ${error.message}`
+                    }
+                ],
+                isError: true
+            };
+
+            log('ERROR', `[REQUEST-${requestId}] Returning error response`);
+            return errorResponse;
+        } finally {
+            const totalDuration = Date.now() - startTime;
+            log('INFO', `[REQUEST-${requestId}] ===== REQUEST COMPLETED in ${totalDuration}ms =====`);
+        }
+    }
+
+    private createStorage() {
+        const storageType = process.env.MCP_STORAGE_TYPE || 'json';
+        const defaultData: TodoodleData = {
+            items: [],
+            metadata: {
+                lastId: 0,
+                version: '2.1.0',
+                updatedAt: new Date().toISOString(),
+                totalItems: 0,
+                completedItems: 0
+            }
+        };
+
+        const config = {
+            type: storageType as 'json' | 'mongodb',
+            mongodb: storageType === 'mongodb' ? {
+                connectionString: process.env.MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017/LibreChat',
+                databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
+                collectionName: process.env.MONGODB_COLLECTION || 'user_todoodles',
+                connectionTimeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
+                maxRetries: parseInt(process.env.MCP_MONGODB_RETRIES || '3'),
+                encryptionKey: process.env.CREDS_KEY
+            } : undefined,
+            json: storageType === 'json' ? {
+                baseDir: path.dirname(process.env.TODOS_FILE_PATH || './todoodle.json'),
+                createDirIfNotExists: true,
+                backupEnabled: process.env.MCP_BACKUP_ENABLED === 'true'
+            } : undefined
+        };
+
+        return StorageFactory.createUserStorage(config, defaultData);
+    }
+
+    private getUserId(): string {
+        if (this.isUserBased && process.env.MCP_USER_ID) {
+            return process.env.MCP_USER_ID;
+        }
+        return this.defaultUserId;
+    }
+
+    // Prevent race conditions during concurrent operations
+    private async withLock<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+        const lockKey = `user_${userId}`;
+
+        // Wait for existing operation to complete (without timeout to avoid aborting valid operations)
+        while (this.operationLocks.has(lockKey)) {
+            try {
+                await this.operationLocks.get(lockKey);
+            } catch (error: any) {
+                // Previous operation failed, but lock should be cleaned up
+                log('DEBUG', `Previous operation failed for user ${userId}: ${error.message}`);
+            }
+            // Give a small delay to prevent tight loops
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        // Create new operation promise
+        const operationPromise = (async () => {
+            try {
+                log('DEBUG', `Starting locked operation for user ${userId}`);
+                const result = await operation();
+                log('DEBUG', `Completed locked operation for user ${userId}`);
+                return result;
+            } catch (error: any) {
+                log('ERROR', `Operation failed for user ${userId}: ${error.message}`);
+                throw error;
+            }
+        })();
+
+        this.operationLocks.set(lockKey, operationPromise);
+
+        try {
+            const result = await operationPromise;
+            return result;
+        } finally {
+            // Clean up the lock
+            this.operationLocks.delete(lockKey);
+            log('DEBUG', `Released lock for user ${userId}`);
+        }
+    }
+
+    private async getTodoData(userId?: string): Promise<TodoodleData> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `[GETTODODATA] Starting getTodoData for user: "${effectiveUserId}"`);
+        log('INFO', `[GETTODODATA] isUserBased: ${this.isUserBased}`);
+
+        try {
+            let data;
+            if (this.isUserBased) {
+                log('INFO', `[GETTODODATA] Loading user-specific data for: "${effectiveUserId}"`);
+                const loadStartTime = Date.now();
+                data = await this.storage.loadForUser(effectiveUserId);
+                const loadDuration = Date.now() - loadStartTime;
+                log('INFO', `[GETTODODATA] storage.loadForUser completed in ${loadDuration}ms`);
+            } else {
+                log('INFO', `[GETTODODATA] Loading default data (non-user-based)`);
+                const loadStartTime = Date.now();
+                data = await this.storage.load();
+                const loadDuration = Date.now() - loadStartTime;
+                log('INFO', `[GETTODODATA] storage.load completed in ${loadDuration}ms`);
             }
 
-            // Create a temporary file first
-            const tempFilePath = `${todosFilePath}.tmp`;
-            await fs.writeFile(tempFilePath, JSON.stringify(this.todoodles, null, 2));
+            log('INFO', `[GETTODODATA] Successfully loaded ${data.items?.length || 0} todos for user ${effectiveUserId}`);
+            log('INFO', `[GETTODODATA] Data structure:`, {
+                itemCount: data.items?.length || 0,
+                hasMetadata: !!data.metadata,
+                lastId: data.metadata?.lastId,
+                version: data.metadata?.version,
+                updatedAt: data.metadata?.updatedAt
+            });
 
-            // Atomic rename operation
-            await fs.rename(tempFilePath, todosFilePath);
-
-            console.error('Todoodles saved successfully');
-        } catch (error) {
-            console.error('Error saving todoodles:', error);
+            return data;
+        } catch (error: any) {
+            log('ERROR', `[GETTODODATA] Failed to load todo data for user ${effectiveUserId}: ${error.message}`);
+            log('ERROR', `[GETTODODATA] Error details:`, {
+                name: error.name,
+                message: error.message,
+                code: error.code || 'NO_CODE',
+                stack: error.stack
+            });
             throw error;
-        } finally {
-            this.isSaving = false;
         }
     }
 
-    async add(text: string, category?: string, priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium', dueDate?: string): Promise<TodoodleItem> {
-        this.lastId += 1;
-        const todoodle: TodoodleItem = {
-            id: this.lastId.toString(),
-            text,
-            createdAt: new Date().toISOString(),
-            completed: false,
-            category,
-            priority,
-            dueDate
-        };
-        this.todoodles.push(todoodle);
-        await this.save();
-        const dueDateText = dueDate ? `, due ${new Date(dueDate).toLocaleDateString()}` : '';
-        console.error(`📝 Added new todoodle with ID ${todoodle.id}: "${todoodle.text}" [${priority}${category ? `, ${category}` : ''}${dueDateText}]`);
-        return todoodle;
-    }
+    private async saveTodoData(data: TodoodleData, userId?: string): Promise<void> {
+        const effectiveUserId = userId || this.getUserId();
 
-    async completeById(id: string): Promise<TodoodleItem | null> {
-        const todoodle = this.todoodles.find(t => t.id === id);
-        if (!todoodle) {
-            return null;
+        try {
+            // Update metadata
+            data.metadata.updatedAt = new Date().toISOString();
+            data.metadata.totalItems = data.items.length;
+            data.metadata.completedItems = data.items.filter(item => item.completed).length;
+
+            log('DEBUG', `Attempting to save ${data.items.length} todos for user ${effectiveUserId}`);
+
+            if (this.isUserBased) {
+                await this.storage.saveForUser(effectiveUserId, data);
+            } else {
+                await this.storage.save(data);
+            }
+
+            log('DEBUG', `Successfully saved ${data.items.length} todos for user ${effectiveUserId}`);
+        } catch (error: any) {
+            log('ERROR', `Failed to save todo data for user ${effectiveUserId}: ${error.message}`, error.stack);
+            throw error;
         }
-
-        // Remove the todoodle (same logic as deleteById)
-        const initialLength = this.todoodles.length;
-        this.todoodles = this.todoodles.filter(t => t.id !== id);
-        if (this.todoodles.length !== initialLength) {
-            await this.save();
-            console.error(`✅ Completed and removed todoodle with ID ${todoodle.id}: "${todoodle.text}"`);
-            return todoodle;
-        }
-        return null;
     }
 
-    get(): TodoodleItem[] {
-        return [...this.todoodles].sort((a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-    }
+    async addTodo(text: string, category?: string, priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium', dueDate?: string, userId?: string): Promise<TodoodleItem> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `Adding todo for user: ${effectiveUserId}: "${text}", category: ${category}, priority: ${priority}`);
 
-    getToday(): TodoodleItem[] {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return this.get().filter(todoodle =>
-            new Date(todoodle.createdAt) >= today
-        );
-    }
+        return await this.withLock(effectiveUserId, async () => {
+            const data = await this.getTodoData(effectiveUserId);
+            log('DEBUG', `Loaded ${data.items.length} existing todos, lastId: ${data.metadata.lastId}`);
 
-    getAll(): TodoodleItem[] {
-        return this.get();
-    }
+            // Check for exact duplicates (text, category, priority, dueDate all match)
+            const existingTodo = data.items.find(item =>
+                !item.completed && // Only check against incomplete todos
+                item.text.trim().toLowerCase() === text.trim().toLowerCase() &&
+                (item.category || '') === (category || '') &&
+                item.priority === priority &&
+                (item.dueDate || '') === (dueDate || '')
+            );
 
-    getIncomplete(): TodoodleItem[] {
-        return this.get().filter(todoodle => !todoodle.completed);
-    }
+            if (existingTodo) {
+                log('WARN', `Duplicate todo detected for user ${effectiveUserId}: "${text}" (existing ID: ${existingTodo.id})`);
+                return existingTodo; // Return the existing todo instead of creating a duplicate
+            }
 
-    search(query: string): TodoodleItem[] {
-        // Simple case-insensitive search
-        const searchTerms = query.toLowerCase().split(/\s+/);
-        return this.todoodles.filter(todoodle => {
-            const todoodleText = todoodle.text.toLowerCase();
-            return searchTerms.every(term => todoodleText.includes(term));
+            // Find the lowest available numeric ID to fill gaps
+            const numericIds = data.items
+                .map(item => parseInt(item.id))
+                .filter(id => !isNaN(id))
+                .sort((a, b) => a - b);
+
+            let nextId = 1;
+            for (const id of numericIds) {
+                if (id === nextId) {
+                    nextId++;
+                } else {
+                    break; // Found a gap
+                }
+            }
+
+            data.metadata.lastId = nextId;
+
+            const newTodo: TodoodleItem = {
+                id: nextId.toString(),
+                text,
+                createdAt: new Date().toISOString(),
+                completed: false,
+                priority
+            };
+
+            // Only add optional fields if they have values
+            if (category) {
+                newTodo.category = category;
+            }
+            if (dueDate) {
+                newTodo.dueDate = dueDate;
+            }
+
+            data.items.push(newTodo);
+
+            try {
+                await this.saveTodoData(data, effectiveUserId);
+                log('DEBUG', `Successfully added todo ${nextId} for user ${effectiveUserId}. Total todos: ${data.items.length}`);
+                return newTodo;
+            } catch (error: any) {
+                log('ERROR', `Failed to save todo for user ${effectiveUserId}: ${error.message}`);
+                throw error;
+            }
         });
     }
 
-    getByCategory(category: string): TodoodleItem[] {
-        return this.get().filter(todoodle =>
-            todoodle.category?.toLowerCase() === category.toLowerCase()
-        );
+    async completeTodo(id: string, userId?: string): Promise<TodoodleItem | null> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `Completing todo ${id} for user: ${effectiveUserId}`);
+
+        return await this.withLock(effectiveUserId, async () => {
+            const data = await this.getTodoData(effectiveUserId);
+            const todo = data.items.find(item => item.id === id);
+
+            if (!todo) {
+                log('WARN', `Todo ${id} not found for user ${effectiveUserId}`);
+                return null;
+            }
+
+            if (!todo.completed) {
+                todo.completed = true;
+                todo.completedAt = new Date().toISOString();
+                todo.timeToComplete = new Date(todo.completedAt).getTime() - new Date(todo.createdAt).getTime();
+
+                await this.saveTodoData(data, effectiveUserId);
+                log('DEBUG', `Completed todo ${id} for user ${effectiveUserId}`);
+            } else {
+                log('WARN', `Todo ${id} is already completed for user ${effectiveUserId}`);
+            }
+
+            return todo;
+        });
     }
 
-    getByPriority(priority: 'low' | 'medium' | 'high' | 'urgent'): TodoodleItem[] {
-        return this.get().filter(todoodle => todoodle.priority === priority);
-    }
+    async getTodos(userId?: string): Promise<TodoodleItem[]> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `[GETTODOS] Starting getTodos for user: "${effectiveUserId}"`);
 
-    getPrioritized(): TodoodleItem[] {
-        const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
-        return [...this.todoodles]
-            .sort((a, b) => {
-                // First sort by priority (urgent first)
-                const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-                if (priorityDiff !== 0) return priorityDiff;
-                // Then by creation date (newest first)
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        try {
+            log('INFO', `[GETTODOS] Calling getTodoData for user: "${effectiveUserId}"`);
+            const dataStartTime = Date.now();
+            const data = await this.getTodoData(effectiveUserId);
+            const dataDuration = Date.now() - dataStartTime;
+
+            log('INFO', `[GETTODOS] getTodoData completed in ${dataDuration}ms, got ${data.items?.length || 0} items`);
+            log('INFO', `[GETTODOS] Data metadata:`, data.metadata);
+
+            // Clean up any null values that should be undefined for optional fields
+            const cleanedItems = data.items.map(item => {
+                const cleaned: TodoodleItem = {
+                    id: item.id,
+                    text: item.text,
+                    createdAt: item.createdAt,
+                    completed: item.completed,
+                    priority: item.priority
+                };
+
+                // Only add optional fields if they exist and aren't null
+                if (item.category && item.category !== null) {
+                    cleaned.category = item.category;
+                }
+                if (item.dueDate && item.dueDate !== null) {
+                    cleaned.dueDate = item.dueDate;
+                }
+                if (item.completedAt && item.completedAt !== null) {
+                    cleaned.completedAt = item.completedAt;
+                }
+                if (item.timeToComplete && item.timeToComplete !== null) {
+                    cleaned.timeToComplete = item.timeToComplete;
+                }
+
+                return cleaned;
             });
+
+            log('INFO', `[GETTODOS] Retrieved and cleaned ${cleanedItems.length} todos for user ${effectiveUserId}`);
+            return cleanedItems;
+        } catch (error: any) {
+            log('ERROR', `[GETTODOS] Failed to get todos for user "${effectiveUserId}": ${error.message}`);
+            log('ERROR', `[GETTODOS] Error stack:`, error.stack);
+            throw error;
+        }
     }
 
-    getCategories(): string[] {
-        const categories = new Set(
-            this.todoodles
-                .map(t => t.category)
-                .filter((c): c is string => c !== undefined && c !== null && c.trim() !== '')
+    async getIncompleteTodos(userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
+        return todos.filter(todo => !todo.completed);
+    }
+
+    async searchTodos(query: string, userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
+        const lowerQuery = query.toLowerCase();
+
+        return todos.filter(todo =>
+            todo.text.toLowerCase().includes(lowerQuery) ||
+            todo.category?.toLowerCase().includes(lowerQuery)
         );
-        return Array.from(categories).sort();
     }
 
-    getDueToday(): TodoodleItem[] {
+    async getTodosByCategory(category: string, userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
+        return todos.filter(todo => todo.category === category);
+    }
+
+    async getTodosByPriority(priority: 'low' | 'medium' | 'high' | 'urgent', userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
+        return todos.filter(todo => todo.priority === priority);
+    }
+
+    async getDueTodos(userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
         const today = new Date();
         today.setHours(23, 59, 59, 999); // End of today
-        const todayStart = new Date(today);
-        todayStart.setHours(0, 0, 0, 0); // Start of today
 
-        return this.get().filter(todoodle => {
-            if (!todoodle.dueDate || todoodle.completed) return false;
-            const dueDate = new Date(todoodle.dueDate);
-            return dueDate >= todayStart && dueDate <= today;
+        return todos.filter(todo => {
+            if (!todo.dueDate || todo.completed) return false;
+            const dueDate = new Date(todo.dueDate);
+            return dueDate <= today;
         });
     }
 
-    getOverdue(): TodoodleItem[] {
+    async getOverdueTodos(userId?: string): Promise<TodoodleItem[]> {
+        const todos = await this.getTodos(userId);
         const now = new Date();
-        return this.get().filter(todoodle => {
-            if (!todoodle.dueDate || todoodle.completed) return false;
-            const dueDate = new Date(todoodle.dueDate);
+
+        return todos.filter(todo => {
+            if (!todo.dueDate || todo.completed) return false;
+            const dueDate = new Date(todo.dueDate);
             return dueDate < now;
         });
     }
 
-    getDueThisWeek(): TodoodleItem[] {
-        const now = new Date();
-        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    async deleteTodo(id: string, userId?: string): Promise<{ success: boolean; deletedTodo?: TodoodleItem }> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `Deleting todo ${id} for user: ${effectiveUserId}`);
 
-        return this.get().filter(todoodle => {
-            if (!todoodle.dueDate || todoodle.completed) return false;
-            const dueDate = new Date(todoodle.dueDate);
-            return dueDate >= now && dueDate <= weekFromNow;
-        });
-    }
+        return await this.withLock(effectiveUserId, async () => {
+            const data = await this.getTodoData(effectiveUserId);
+            const todoToDelete = data.items.find(item => item.id === id);
 
-    getSortedByDueDate(): TodoodleItem[] {
-        return [...this.todoodles].sort((a, b) => {
-            // Items without due dates go to the bottom
-            if (!a.dueDate && !b.dueDate) {
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            if (!todoToDelete) {
+                log('WARN', `Todo ${id} not found for deletion for user ${effectiveUserId}`);
+                return { success: false };
             }
-            if (!a.dueDate) return 1;
-            if (!b.dueDate) return -1;
 
-            // Sort by due date (earliest first)
-            const dueDateDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-            if (dueDateDiff !== 0) return dueDateDiff;
+            // Remove the todo from the array
+            data.items = data.items.filter(item => item.id !== id);
 
-            // If same due date, sort by priority
-            const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
-            return priorityOrder[b.priority] - priorityOrder[a.priority];
+            await this.saveTodoData(data, effectiveUserId);
+            log('DEBUG', `Deleted todo ${id} ("${todoToDelete.text}") for user ${effectiveUserId}`);
+            return { success: true, deletedTodo: todoToDelete };
         });
     }
 
-    // Helper function to format due date information
-    formatDueDate(dueDate: string): { text: string; emoji: string; isOverdue: boolean } {
-        const due = new Date(dueDate);
-        const now = new Date();
-        const diffMs = due.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    async getCategories(userId?: string): Promise<string[]> {
+        const todos = await this.getTodos(userId);
+        const categories = new Set<string>();
 
-        if (diffDays < 0) {
-            return {
-                text: `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} overdue`,
-                emoji: '🚨',
-                isOverdue: true
-            };
-        } else if (diffDays === 0) {
-            return { text: 'due today', emoji: '⏰', isOverdue: false };
-        } else if (diffDays === 1) {
-            return { text: 'due tomorrow', emoji: '📅', isOverdue: false };
-        } else if (diffDays <= 7) {
-            return { text: `due in ${diffDays} days`, emoji: '📅', isOverdue: false };
-        } else {
-            return { text: `due ${due.toLocaleDateString()}`, emoji: '📅', isOverdue: false };
-        }
+        todos.forEach(todo => {
+            if (todo.category) {
+                categories.add(todo.category);
+            }
+        });
+
+        return Array.from(categories).sort();
     }
 
-    async completeByText(text: string): Promise<TodoodleItem | null> {
-        const matches = this.search(text);
-        if (matches.length === 0) {
-            return null;
-        }
-        // If multiple matches, complete the most recent one
-        const todoodleToComplete = matches[0];
-        return this.completeById(todoodleToComplete.id);
-    }
+    async getStats(userId?: string): Promise<any> {
+        const effectiveUserId = userId || this.getUserId();
+        const data = await this.getTodoData(effectiveUserId);
+        const todos = data.items;
 
-    async deleteById(id: string): Promise<boolean> {
-        const initialLength = this.todoodles.length;
-        this.todoodles = this.todoodles.filter(t => t.id !== id);
-        if (this.todoodles.length !== initialLength) {
-            await this.save();
-            return true;
-        }
-        return false;
+        const completed = todos.filter(t => t.completed);
+        const incomplete = todos.filter(t => !t.completed);
+        const overdue = await this.getOverdueTodos(effectiveUserId);
+
+        // Calculate category counts
+        const categoryStats: Record<string, number> = {};
+        todos.forEach(todo => {
+            if (todo.category) {
+                categoryStats[todo.category] = (categoryStats[todo.category] || 0) + 1;
+            }
+        });
+
+        // Calculate priority counts
+        const priorityStats: Record<string, number> = {};
+        todos.forEach(todo => {
+            if (todo.priority) {
+                priorityStats[todo.priority] = (priorityStats[todo.priority] || 0) + 1;
+            }
+        });
+
+        return {
+            total: todos.length,
+            completed: completed.length,
+            incomplete: incomplete.length,
+            overdue: overdue.length,
+            categories: categoryStats,
+            priorities: priorityStats,
+            averageCompletionTime: completed.length > 0
+                ? completed.reduce((sum, t) => sum + (t.timeToComplete || 0), 0) / completed.length
+                : 0,
+            lastUpdated: data.metadata.updatedAt
+        };
     }
 }
 
-const todoodleManager = new TodoodleListManager();
+// Initialize the manager
+const todoodlesManager = new UserAwareTodoodlesManager();
+
+// Initialize web UI manager (clean separation)
+const webUIManager = new TodoodlesWebUIManager(todoodlesManager);
+
+// Function to extract user ID from request (for LibreChat integration)
+function extractUserId(request: any): string | undefined {
+    // Check multiple possible locations for user ID in order of priority
+    const userId = request.params?.userId || // LibreChat sends userId in params
+        request.meta?.user_id ||
+        request.meta?.userId ||
+        request.meta?.phone_number || // SMS users  
+        request.params?.user_id ||
+        process.env.MCP_USER_ID;
+
+    if (process.env.MCP_DEBUG === 'true') {
+        log('DEBUG', `Extracted user ID: ${userId}`, {
+            'request.params?.userId': request.params?.userId,
+            'request.meta?.user_id': request.meta?.user_id,
+            'request.meta?.userId': request.meta?.userId,
+            'request.meta?.phone_number': request.meta?.phone_number,
+            'request.params?.user_id': request.params?.user_id,
+            'process.env.MCP_USER_ID': process.env.MCP_USER_ID
+        });
+    }
+
+    return userId;
+}
 
 // Create the MCP server
-const server = new Server({
-    name: "todoodle-server",
-    version: "0.1.0",
-}, {
-    capabilities: {
-        tools: {},
+const server = new Server(
+    {
+        name: "todoodles",
+        version: "2.1.0",
     },
-});
+    {
+        capabilities: {
+            tools: {},
+        },
+    }
+);
 
-// Define the tools we'll expose
+// List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: "add",
-                description: "Add a new todoodle item to the list with optional category and priority",
+                name: "add_todoodle",
+                description: "Add a new todoodle item with optional category, priority, and due date",
                 inputSchema: {
                     type: "object",
                     properties: {
                         text: {
                             type: "string",
-                            description: "The text of the todoodle item"
+                            description: "The todoodle text"
                         },
                         category: {
                             type: "string",
-                            description: "Optional category to organize the todoodle (e.g., 'work', 'personal', 'shopping')"
+                            description: "Optional category for the todoodle"
                         },
                         priority: {
                             type: "string",
                             enum: ["low", "medium", "high", "urgent"],
-                            description: "Priority level of the todoodle. Defaults to 'medium' if not specified."
+                            description: "Priority level (default: medium)"
                         },
                         dueDate: {
                             type: "string",
-                            description: "Optional due date in ISO format (YYYY-MM-DD) or natural language (e.g., 'tomorrow', '2024-12-25')"
-                        },
+                            description: "Optional due date in ISO format"
+                        }
                     },
-                    required: ["text"],
-                },
+                    required: ["text"]
+                }
             },
             {
-                name: "get_today",
-                description: "Get all todoodle items created today, ordered from newest to oldest",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-            },
-            {
-                name: "get_all",
-                description: "Get all todoodle items, ordered from newest to oldest",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-            },
-            {
-                name: "complete",
-                description: "Mark a todoodle item as completed",
+                name: "complete_todoodle",
+                description: "Mark a todoodle as completed",
                 inputSchema: {
                     type: "object",
                     properties: {
                         id: {
                             type: "string",
-                            description: "The ID of the todoodle item to complete"
-                        },
+                            description: "The ID of the todoodle to complete"
+                        }
                     },
-                    required: ["id"],
-                },
+                    required: ["id"]
+                }
             },
             {
-                name: "get_incomplete",
-                description: "Get all incomplete todoodle items, ordered from newest to oldest",
+                name: "get_all_todoodles",
+                description: "Get all todoodles or filter by completion status",
                 inputSchema: {
                     type: "object",
-                    properties: {},
-                },
+                    properties: {
+                        completed: {
+                            type: "boolean",
+                            description: "Filter by completion status (true=completed, false=incomplete, omit=all)"
+                        }
+                    },
+                    required: []
+                }
             },
             {
-                name: "search",
-                description: "Search for todoodles by text content",
+                name: "search_todoodles",
+                description: "Search todoodles by text or category",
                 inputSchema: {
                     type: "object",
                     properties: {
                         query: {
                             type: "string",
-                            description: "The search query to match against todoodle text"
-                        },
+                            description: "Search query for text or category"
+                        }
                     },
-                    required: ["query"],
-                },
+                    required: ["query"]
+                }
             },
             {
-                name: "complete_by_text",
-                description: "Mark a todoodle as completed by searching for its text content",
+                name: "get_todoodles_by_category",
+                description: "Get todoodles by category",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        text: {
+                        category: {
                             type: "string",
-                            description: "The text content to search for and complete"
-                        },
+                            description: "Category name"
+                        }
                     },
-                    required: ["text"],
-                },
+                    required: ["category"]
+                }
             },
             {
-                name: "delete",
-                description: "Delete a todoodle by its ID",
+                name: "get_todoodles_by_priority",
+                description: "Get todoodles by priority level",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        priority: {
+                            type: "string",
+                            enum: ["low", "medium", "high", "urgent"],
+                            description: "Priority level"
+                        }
+                    },
+                    required: ["priority"]
+                }
+            },
+            {
+                name: "get_due_todoodles",
+                description: "Get todoodles that are due today or overdue",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        overdue_only: {
+                            type: "boolean",
+                            description: "If true, only return overdue todoodles"
+                        }
+                    },
+                    required: []
+                }
+            },
+            {
+                name: "delete_todoodle",
+                description: "Delete a todoodle permanently",
                 inputSchema: {
                     type: "object",
                     properties: {
                         id: {
                             type: "string",
                             description: "The ID of the todoodle to delete"
-                        },
+                        }
                     },
-                    required: ["id"],
-                },
-            },
-            {
-                name: "get_by_category",
-                description: "Get all todoodles in a specific category",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        category: {
-                            type: "string",
-                            description: "The category to filter by"
-                        },
-                    },
-                    required: ["category"],
-                },
-            },
-            {
-                name: "get_by_priority",
-                description: "Get all todoodles with a specific priority level",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        priority: {
-                            type: "string",
-                            enum: ["low", "medium", "high", "urgent"],
-                            description: "The priority level to filter by"
-                        },
-                    },
-                    required: ["priority"],
-                },
-            },
-            {
-                name: "get_prioritized",
-                description: "Get all todoodles sorted by priority (urgent first) then by creation date",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
+                    required: ["id"]
+                }
             },
             {
                 name: "get_categories",
-                description: "Get a list of all categories currently in use",
+                description: "Get all unique categories",
                 inputSchema: {
                     type: "object",
                     properties: {},
-                },
+                    required: []
+                }
             },
             {
-                name: "get_due_today",
-                description: "Get all todoodles due today",
+                name: "get_todoodles_stats",
+                description: "Get statistics about todoodles",
                 inputSchema: {
                     type: "object",
                     properties: {},
-                },
+                    required: []
+                }
             },
             {
-                name: "get_overdue",
-                description: "Get all overdue todoodles",
+                name: "get_web_ui",
+                description: "Get a web interface for managing todoodles",
                 inputSchema: {
                     type: "object",
-                    properties: {},
-                },
-            },
-            {
-                name: "get_due_this_week",
-                description: "Get all todoodles due within the next 7 days",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-            },
-            {
-                name: "get_sorted_by_due_date",
-                description: "Get all todoodles sorted by due date (earliest first), then by priority",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-            },
-        ],
+                    properties: {
+                        extend_minutes: {
+                            type: "number",
+                            description: "Minutes to extend session (default: 30)",
+                            minimum: 5,
+                            maximum: 120
+                        }
+                    },
+                    additionalProperties: false
+                }
+            }
+        ]
     };
 });
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+    const userId = extractUserId(request);
 
-    if (!args) {
-        throw new Error(`No arguments provided for tool: ${name}`);
-    }
-
-    switch (name) {
-        case "add":
-            const todoodle = await todoodleManager.add(
-                args.text as string,
-                args.category as string | undefined,
-                args.priority as 'low' | 'medium' | 'high' | 'urgent' | undefined,
-                args.dueDate as string | undefined
-            );
-            const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-            const priorityEmoji = {
-                'low': '🟢',
-                'medium': '🟡',
-                'high': '🟠',
-                'urgent': '🔴'
-            }[todoodle.priority];
-
-            let dueDateDisplay = '';
-            if (todoodle.dueDate) {
-                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                dueDateDisplay = ` ${dueInfo.emoji} ${dueInfo.text}`;
+    try {
+        switch (request.params.name) {
+            case "add_todoodle": {
+                const { text, category, priority = 'medium', dueDate } = request.params.arguments as any;
+                const todoodle = await todoodlesManager.addTodo(text, category, priority, dueDate, userId);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Added todoodle: ${todoodle.text} (ID: ${todoodle.id})`
+                        }
+                    ]
+                };
             }
 
-            return {
-                content: [{
-                    type: "text",
-                    text: `📝 Added todoodle: "${todoodle.text}"${categoryText} ${priorityEmoji} ${todoodle.priority} priority${dueDateDisplay} (created at ${new Date(todoodle.createdAt).toLocaleString()})`
-                }]
-            };
-        case "get_today":
-            const todayTodoodles = todoodleManager.getToday();
-            if (todayTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📅 No todoodles for today!"
-                    }]
-                };
-            }
-            const todaySummary = todayTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const priorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                let dueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    dueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority}${dueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `📅 Today's todoodles:\n${todaySummary}`
-                }]
-            };
-        case "get_all":
-            const allTodoodles = todoodleManager.getAll();
-            if (allTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📋 No todoodles found!"
-                    }]
-                };
-            }
-            const allSummary = allTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const allPriorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                let allDueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    allDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${allPriorityEmoji} ${todoodle.priority}${allDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `📋 All todoodles:\n${allSummary}`
-                }]
-            };
-        case "complete":
-            const completedTodoodleById = await todoodleManager.completeById(args.id as string);
-            if (!completedTodoodleById) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "❌ Todoodle not found or already completed"
-                    }]
-                };
-            }
-            return {
-                content: [{
-                    type: "text",
-                    text: `🎉 Completed todoodle: "${completedTodoodleById.text}" (ID: ${completedTodoodleById.id}, took ${Math.round(completedTodoodleById.timeToComplete! / 1000 / 60)} minutes)`
-                }]
-            };
-        case "get_incomplete":
-            const incompleteTodoodles = todoodleManager.getIncomplete();
-            if (incompleteTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📝 No incomplete todoodles found!"
-                    }]
-                };
-            }
-            const incompleteSummary = incompleteTodoodles.map(todoodle => {
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const incompletePriorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                let incompleteDueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    incompleteDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${incompletePriorityEmoji} ${todoodle.priority}${incompleteDueDateInfo} (created at ${new Date(todoodle.createdAt).toLocaleString()})`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `📝 Incomplete todoodles:\n${incompleteSummary}`
-                }]
-            };
-        case "search":
-            const matches = todoodleManager.search(args.query as string);
-            if (matches.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "🔍 No matching todoodles found"
-                    }]
-                };
-            }
-            const searchResults = matches.map(todoodle => {
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const searchPriorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                let searchDueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    searchDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, Text: "${todoodle.text}"${categoryText} ${searchPriorityEmoji} ${todoodle.priority}${searchDueDateInfo} (${todoodle.completed ? '✅ Completed' : '⏳ Pending'})`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `🔍 Found ${matches.length} matching todoodles:\n${searchResults}`
-                }]
-            };
-        case "complete_by_text":
-            const completedTodoodleByText = await todoodleManager.completeByText(args.text as string);
-            if (!completedTodoodleByText) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "❌ No matching todoodle found to complete"
-                    }]
-                };
-            }
-            return {
-                content: [{
-                    type: "text",
-                    text: `🎉 Completed todoodle: "${completedTodoodleByText.text}" (ID: ${completedTodoodleByText.id}, took ${Math.round(completedTodoodleByText.timeToComplete! / 1000 / 60)} minutes)`
-                }]
-            };
-        case "delete":
-            const deleted = await todoodleManager.deleteById(args.id as string);
-            if (!deleted) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "❌ Todoodle not found (ID: " + args.id + ")"
-                    }]
-                };
-            }
-            return {
-                content: [{
-                    type: "text",
-                    text: "🗑️ Todoodle deleted successfully (ID: " + args.id + ")"
-                }]
-            };
-        case "get_by_category":
-            const categoryTodoodles = todoodleManager.getByCategory(args.category as string);
-            if (categoryTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: `📂 No todoodles found in category "${args.category}"`
-                    }]
-                };
-            }
-            const categorySummary = categoryTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const itemPriorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                let categoryDueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    categoryDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, ${todoodle.text} ${itemPriorityEmoji} ${todoodle.priority}${categoryDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `📂 Todoodles in category "${args.category}":\n${categorySummary}`
-                }]
-            };
-        case "get_by_priority":
-            const priorityTodoodles = todoodleManager.getByPriority(args.priority as 'low' | 'medium' | 'high' | 'urgent');
-            if (priorityTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: `🎯 No todoodles found with ${args.priority} priority`
-                    }]
-                };
-            }
-            const filterPriorityEmoji = {
-                'low': '🟢',
-                'medium': '🟡',
-                'high': '🟠',
-                'urgent': '🔴'
-            }[args.priority as 'low' | 'medium' | 'high' | 'urgent'];
-            const prioritySummary = priorityTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                let priorityDueDateInfo = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    priorityDueDateInfo = ` ${dueInfo.emoji} ${dueInfo.text}`;
-                }
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText}${priorityDueDateInfo} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `🎯 ${filterPriorityEmoji} ${args.priority} priority todoodles:\n${prioritySummary}`
-                }]
-            };
-        case "get_prioritized":
-            const prioritizedTodoodles = todoodleManager.getPrioritized();
-            if (prioritizedTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📋 No todoodles found!"
-                    }]
-                };
-            }
-            const prioritizedSummary = prioritizedTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const todoodlePriorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${todoodlePriorityEmoji} ${todoodle.priority} (${new Date(todoodle.createdAt).toLocaleString()}) - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `🎯 Todoodles by priority:\n${prioritizedSummary}`
-                }]
-            };
-        case "get_categories":
-            const categories = todoodleManager.getCategories();
-            if (categories.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📂 No categories found. Add some todoodles with categories to see them here!"
-                    }]
-                };
-            }
-            return {
-                content: [{
-                    type: "text",
-                    text: `📂 Available categories:\n${categories.map(cat => `- ${cat}`).join('\n')}`
-                }]
-            };
-        case "get_due_today":
-            const dueTodayTodoodles = todoodleManager.getDueToday();
-            if (dueTodayTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "⏰ No todoodles due today!"
-                    }]
-                };
-            }
-            const dueTodaySummary = dueTodayTodoodles.map(todoodle => {
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const priorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ⏰ due today`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `⏰ Todoodles due today:\n${dueTodaySummary}`
-                }]
-            };
-        case "get_overdue":
-            const overdueTodoodles = todoodleManager.getOverdue();
-            if (overdueTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "✅ No overdue todoodles! You're all caught up!"
-                    }]
-                };
-            }
-            const overdueSummary = overdueTodoodles.map(todoodle => {
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const priorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate!);
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ${dueInfo.emoji} ${dueInfo.text}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `🚨 Overdue todoodles:\n${overdueSummary}`
-                }]
-            };
-        case "get_due_this_week":
-            const dueThisWeekTodoodles = todoodleManager.getDueThisWeek();
-            if (dueThisWeekTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📅 No todoodles due this week!"
-                    }]
-                };
-            }
-            const dueThisWeekSummary = dueThisWeekTodoodles.map(todoodle => {
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const priorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-                const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate!);
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority} ${dueInfo.emoji} ${dueInfo.text}`;
-            }).join('\n');
-            return {
-                content: [{
-                    type: "text",
-                    text: `📅 Todoodles due this week:\n${dueThisWeekSummary}`
-                }]
-            };
-        case "get_sorted_by_due_date":
-            const sortedByDueDateTodoodles = todoodleManager.getSortedByDueDate();
-            if (sortedByDueDateTodoodles.length === 0) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "📋 No todoodles found!"
-                    }]
-                };
-            }
-            const sortedByDueDateSummary = sortedByDueDateTodoodles.map(todoodle => {
-                const status = todoodle.completed
-                    ? `✅ Completed in ${Math.round(todoodle.timeToComplete! / 1000 / 60)} minutes`
-                    : "⏳ Pending";
-                const categoryText = todoodle.category ? ` [${todoodle.category}]` : '';
-                const priorityEmoji = {
-                    'low': '🟢',
-                    'medium': '🟡',
-                    'high': '🟠',
-                    'urgent': '🔴'
-                }[todoodle.priority];
-
-                let dueDateText = '';
-                if (todoodle.dueDate) {
-                    const dueInfo = todoodleManager.formatDueDate(todoodle.dueDate);
-                    dueDateText = ` ${dueInfo.emoji} ${dueInfo.text}`;
+            case "complete_todoodle": {
+                const { id } = request.params.arguments as any;
+                const todoodle = await todoodlesManager.completeTodo(id, userId);
+                if (todoodle) {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Completed todoodle: ${todoodle.text}`
+                            }
+                        ]
+                    };
                 } else {
-                    dueDateText = ' 📝 no due date';
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Todoodle with ID ${id} not found`
+                            }
+                        ]
+                    };
+                }
+            }
+
+            case "get_all_todoodles": {
+                const { completed } = request.params.arguments as any;
+                let todoodles;
+
+                if (completed === true) {
+                    todoodles = (await todoodlesManager.getTodos(userId)).filter(t => t.completed);
+                } else if (completed === false) {
+                    todoodles = await todoodlesManager.getIncompleteTodos(userId);
+                } else {
+                    todoodles = await todoodlesManager.getTodos(userId);
                 }
 
-                return `- ID: ${todoodle.id}, ${todoodle.text}${categoryText} ${priorityEmoji} ${todoodle.priority}${dueDateText} - ${status}`;
-            }).join('\n');
-            return {
-                content: [{
+                const todoText = todoodles.map(t =>
+                    `${t.id}. ${t.text} ${t.completed ? '✓' : '○'} [${t.priority}] ${t.category ? `(${t.category})` : ''} ${t.dueDate ? `Due: ${t.dueDate}` : ''}`
+                ).join('\n');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: todoodles.length > 0 ? todoText : "No todoodles found"
+                        }
+                    ]
+                };
+            }
+
+            case "search_todoodles": {
+                const { query } = request.params.arguments as any;
+                const todoodles = await todoodlesManager.searchTodos(query, userId);
+
+                const todoText = todoodles.map(t =>
+                    `${t.id}. ${t.text} ${t.completed ? '✓' : '○'} [${t.priority}] ${t.category ? `(${t.category})` : ''}`
+                ).join('\n');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: todoodles.length > 0 ? todoText : `No todoodles found matching "${query}"`
+                        }
+                    ]
+                };
+            }
+
+            case "get_todoodles_by_category": {
+                const { category } = request.params.arguments as any;
+                const todoodles = await todoodlesManager.getTodosByCategory(category, userId);
+
+                const todoText = todoodles.map(t =>
+                    `${t.id}. ${t.text} ${t.completed ? '✓' : '○'} [${t.priority}]`
+                ).join('\n');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: todoodles.length > 0 ? todoText : `No todoodles found in category "${category}"`
+                        }
+                    ]
+                };
+            }
+
+            case "get_todoodles_by_priority": {
+                const { priority } = request.params.arguments as any;
+                const todoodles = await todoodlesManager.getTodosByPriority(priority, userId);
+
+                const todoText = todoodles.map(t =>
+                    `${t.id}. ${t.text} ${t.completed ? '✓' : '○'} ${t.category ? `(${t.category})` : ''}`
+                ).join('\n');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: todoodles.length > 0 ? todoText : `No todoodles found with priority "${priority}"`
+                        }
+                    ]
+                };
+            }
+
+            case "get_due_todoodles": {
+                const { overdue_only } = request.params.arguments as any;
+                const todoodles = overdue_only
+                    ? await todoodlesManager.getOverdueTodos(userId)
+                    : await todoodlesManager.getDueTodos(userId);
+
+                const todoText = todoodles.map(t =>
+                    `${t.id}. ${t.text} [${t.priority}] Due: ${t.dueDate} ${t.category ? `(${t.category})` : ''}`
+                ).join('\n');
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: todoodles.length > 0 ? todoText : `No ${overdue_only ? 'overdue' : 'due'} todoodles found`
+                        }
+                    ]
+                };
+            }
+
+            case "delete_todoodle": {
+                const { id } = request.params.arguments as any;
+                const result = await todoodlesManager.deleteTodo(id, userId);
+
+                if (result.success && result.deletedTodo) {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Deleted todoodle: "${result.deletedTodo.text}"`
+                            }
+                        ]
+                    };
+                } else {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Todoodle with ID ${id} not found`
+                            }
+                        ]
+                    };
+                }
+            }
+
+            case "get_categories": {
+                const categories = await todoodlesManager.getCategories(userId);
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: categories.length > 0 ? categories.join(', ') : "No categories found"
+                        }
+                    ]
+                };
+            }
+
+            case "get_todoodles_stats": {
+                const stats = await todoodlesManager.getStats(userId);
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Todoodles Statistics:
+Total: ${stats.total}
+Completed: ${stats.completed}
+Incomplete: ${stats.incomplete}
+Overdue: ${stats.overdue}
+Categories: ${stats.categories.length}
+Average completion time: ${Math.round(stats.averageCompletionTime / 1000 / 60)} minutes
+Last updated: ${stats.lastUpdated}`
+                        }
+                    ]
+                };
+            }
+
+            case "get_web_ui": {
+                log('INFO', `[TODOODLES-WEB-UI-SERVER] get_web_ui called with extracted userId: "${userId}"`);
+                log('INFO', `[TODOODLES-WEB-UI-SERVER] Passing userId to web UI: "${userId || 'default'}"`);
+                return await webUIManager.handleGetWebUI(userId || 'default');
+            }
+
+            default:
+                throw new Error(`Unknown tool: ${request.params.name}`);
+        }
+    } catch (error: any) {
+        log('ERROR', `Tool ${request.params.name} failed for user ${userId}: ${error.message}`);
+        return {
+            content: [
+                {
                     type: "text",
-                    text: `📅 Todoodles sorted by due date:\n${sortedByDueDateSummary}`
-                }]
-            };
-        default:
-            throw new Error(`Unknown tool: ${name}`);
+                    text: `Error: ${error.message}`
+                }
+            ],
+            isError: true
+        };
     }
+});
+
+// Cleanup on process exit
+process.on('SIGINT', async () => {
+    log('INFO', 'Shutting down...');
+    await webUIManager.cleanup();
+    await todoodlesManager.cleanup();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    log('INFO', 'Shutting down...');
+    await webUIManager.cleanup();
+    await todoodlesManager.cleanup();
+    process.exit(0);
 });
 
 // Start the server
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Todo MCP Server running on stdio");
+    log('INFO', 'Todoodles MCP Server with Web UI started successfully');
 }
 
 main().catch((error) => {
-    console.error("Fatal error in main():", error);
+    log('ERROR', `Failed to start server: ${error.message}`);
     process.exit(1);
 }); 
