@@ -1,0 +1,112 @@
+{
+    "name": "memory-mcp-server-tests",
+    "version": "1.0.0",
+    "description": "Comprehensive test suite for Memory MCP Server",
+    "type": "module",
+    "scripts": {
+        "test": "npm run test:all",
+        "test:all": "mocha --recursive --timeout 60000 --bail",
+        "test:unit": "mocha 'unit/**/*.test.js' --timeout 30000",
+        "test:integration": "mocha 'integration/**/*.test.js' --timeout 120000",
+        "test:performance": "mocha 'performance/**/*.test.js' --timeout 300000",
+        "test:edge-cases": "mocha 'edge-cases/**/*.test.js' --timeout 60000",
+        "test:storage": "mocha 'unit/storage/**/*.test.js' --timeout 30000",
+        "test:mcp-tools": "mocha 'unit/mcp-tools/**/*.test.js' --timeout 60000",
+        "test:coverage": "c8 --reporter=html --reporter=text npm run test:all",
+        "test:watch": "mocha --recursive --watch --timeout 60000",
+        "test:debug": "mocha --recursive --timeout 0 --inspect-brk",
+        "test:smoke": "mocha 'integration/smoke.test.js' --timeout 30000",
+        "test:cleanup": "node helpers/cleanup-test-data.js",
+        "test:setup": "node helpers/setup-test-environment.js",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix"
+    },
+    "dependencies": {
+        "@sizzek/mcp-data": "file:../../../mcp-data",
+        "dotenv": "^16.3.1",
+        "mongodb": "^6.0.0"
+    },
+    "devDependencies": {
+        "c8": "^8.0.1",
+        "chai": "^4.3.10",
+        "eslint": "^8.57.0",
+        "eslint-config-standard": "^17.1.0",
+        "mocha": "^10.2.0",
+        "sinon": "^17.0.1"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "keywords": [
+        "mcp",
+        "memory",
+        "knowledge-graph",
+        "test",
+        "mongodb",
+        "librechat"
+    ],
+    "author": "MCP Memory Server Team",
+    "license": "MIT",
+    "mocha": {
+        "recursive": true,
+        "timeout": 60000,
+        "bail": false,
+        "reporter": "spec",
+        "require": [
+            "./helpers/test-setup.js"
+        ],
+        "exit": true
+    },
+    "c8": {
+        "exclude": [
+            "node_modules/**",
+            "coverage/**",
+            "tests/**",
+            "**/*.test.js"
+        ],
+        "include": [
+            "../src/**",
+            "../index.ts"
+        ],
+        "all": true,
+        "reporter": [
+            "text",
+            "html",
+            "json"
+        ],
+        "check-coverage": true,
+        "lines": 80,
+        "functions": 80,
+        "branches": 75,
+        "statements": 80
+    },
+    "eslintConfig": {
+        "extends": [
+            "standard"
+        ],
+        "env": {
+            "node": true,
+            "mocha": true,
+            "es2022": true
+        },
+        "parserOptions": {
+            "ecmaVersion": 2022,
+            "sourceType": "module"
+        },
+        "rules": {
+            "no-console": "off",
+            "indent": [
+                "error",
+                2
+            ],
+            "quotes": [
+                "error",
+                "single"
+            ],
+            "semi": [
+                "error",
+                "always"
+            ]
+        }
+    }
+}
