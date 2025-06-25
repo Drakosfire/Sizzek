@@ -75,3 +75,6 @@ models/*
 
 signal-desktop-keyring.gpg
 credentials/
+
+# Archive
+/archive/
