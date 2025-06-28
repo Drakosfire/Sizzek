@@ -7,7 +7,12 @@ import { z } from 'zod';
 export class DeleteEventHandler extends BaseToolHandler {
     async runTool(args: any, oauth2Client: OAuth2Client): Promise<CallToolResult> {
         const validArgs = DeleteEventArgumentsSchema.parse(args);
-        await this.deleteEvent(oauth2Client, validArgs);
+
+        // Resolve calendar display name to actual calendar ID
+        const resolvedCalendarId = await this.resolveCalendarId(oauth2Client, validArgs.calendarId);
+        const argsWithResolvedCalendar = { ...validArgs, calendarId: resolvedCalendarId };
+
+        await this.deleteEvent(oauth2Client, argsWithResolvedCalendar);
         return {
             content: [{
                 type: "text",

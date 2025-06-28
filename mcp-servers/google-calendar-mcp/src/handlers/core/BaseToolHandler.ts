@@ -5,7 +5,71 @@ import { calendar_v3, google } from "googleapis";
 
 
 export abstract class BaseToolHandler {
+    private static calendarListCache: calendar_v3.Schema$CalendarListEntry[] | null = null;
+    private static cacheExpiry: number = 0;
+    private static readonly CACHE_DURATION = 300000; // 5 minutes
+
     abstract runTool(args: any, oauth2Client: OAuth2Client): Promise<CallToolResult>;
+
+    /**
+     * Resolves a calendar display name to actual calendar ID
+     * Returns the original string if it's already a valid calendar ID
+     */
+    protected async resolveCalendarId(client: OAuth2Client, calendarIdOrName: string): Promise<string> {
+        const calendars = await this.getCalendarList(client);
+
+        // First, check if it's already a valid calendar ID
+        const directMatch = calendars.find(cal => cal.id === calendarIdOrName);
+        if (directMatch) {
+            return calendarIdOrName;
+        }
+
+        // If not found, try to match by display name (summary)
+        const nameMatch = calendars.find(cal =>
+            cal.summary?.toLowerCase().trim() === calendarIdOrName.toLowerCase().trim()
+        );
+
+        if (nameMatch && nameMatch.id) {
+            console.log(`[BaseToolHandler] Resolved calendar name "${calendarIdOrName}" to ID "${nameMatch.id}"`);
+            return nameMatch.id;
+        }
+
+        // If no match found, keep original (will likely fail with helpful error)
+        console.warn(`[BaseToolHandler] Could not resolve calendar identifier "${calendarIdOrName}"`);
+        return calendarIdOrName;
+    }
+
+    /**
+     * Resolves multiple calendar display names to actual calendar IDs
+     */
+    protected async resolveCalendarIds(client: OAuth2Client, calendarIds: string[]): Promise<string[]> {
+        const resolved: string[] = [];
+        for (const id of calendarIds) {
+            resolved.push(await this.resolveCalendarId(client, id));
+        }
+        return resolved;
+    }
+
+    /**
+     * Gets calendar list with caching (shared across all handlers)
+     */
+    private async getCalendarList(client: OAuth2Client): Promise<calendar_v3.Schema$CalendarListEntry[]> {
+        const now = Date.now();
+
+        if (BaseToolHandler.calendarListCache && now < BaseToolHandler.cacheExpiry) {
+            return BaseToolHandler.calendarListCache;
+        }
+
+        try {
+            const calendar = this.getCalendar(client);
+            const response = await calendar.calendarList.list();
+            BaseToolHandler.calendarListCache = response.data.items || [];
+            BaseToolHandler.cacheExpiry = now + BaseToolHandler.CACHE_DURATION;
+            return BaseToolHandler.calendarListCache;
+        } catch (error) {
+            throw this.handleGoogleApiError(error);
+        }
+    }
 
     protected handleGoogleApiError(error: unknown): void {
         console.error('[BaseToolHandler] Handling Google API error:', error);

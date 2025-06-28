@@ -9,7 +9,12 @@ import { formatEventList } from "../utils.js";
 export class SearchEventsHandler extends BaseToolHandler {
     async runTool(args: any, oauth2Client: OAuth2Client): Promise<CallToolResult> {
         const validArgs = SearchEventsArgumentsSchema.parse(args);
-        const events = await this.searchEvents(oauth2Client, validArgs);
+
+        // Resolve calendar display name to actual calendar ID
+        const resolvedCalendarId = await this.resolveCalendarId(oauth2Client, validArgs.calendarId);
+        const argsWithResolvedCalendar = { ...validArgs, calendarId: resolvedCalendarId };
+
+        const events = await this.searchEvents(oauth2Client, argsWithResolvedCalendar);
         return {
             content: [{
                 type: "text",

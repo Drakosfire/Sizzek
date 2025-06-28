@@ -29,9 +29,21 @@ export class ListCalendarsHandler extends BaseToolHandler {
      * Formats a list of calendars into a user-friendly string.
      */
     private formatCalendarList(calendars: calendar_v3.Schema$CalendarListEntry[]): string {
-        return calendars
-            .map((cal) => `${cal.summary || "Untitled"} (${cal.id || "no-id"})`)
+        if (calendars.length === 0) {
+            return "No calendars found.";
+        }
+
+        let output = "Available calendars (format: Display Name (Calendar ID)):\n\n";
+        output += calendars
+            .map((cal) => `• ${cal.summary || "Untitled"} (${cal.id || "no-id"})`)
             .join("\n");
+
+        output += "\n\nNOTE: When using calendar tools, you can use either:\n";
+        output += "- The full Calendar ID (recommended): e.g., 'u34c3smnb57oac2j4plhe4v5fk@group.calendar.google.com'\n";
+        output += "- The Display Name (automatically resolved): e.g., 'Stef and Al'\n";
+        output += "- 'primary' for your main personal calendar";
+
+        return output;
     }
 
 }

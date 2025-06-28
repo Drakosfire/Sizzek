@@ -13,7 +13,11 @@ export class CreateEventHandler extends BaseToolHandler {
             const validArgs = CreateEventArgumentsSchema.parse(args);
             console.log('[CreateEventHandler] Arguments validated successfully:', JSON.stringify(validArgs, null, 2));
 
-            const event = await this.createEvent(oauth2Client, validArgs);
+            // Resolve calendar display name to actual calendar ID
+            const resolvedCalendarId = await this.resolveCalendarId(oauth2Client, validArgs.calendarId);
+            const argsWithResolvedCalendar = { ...validArgs, calendarId: resolvedCalendarId };
+
+            const event = await this.createEvent(oauth2Client, argsWithResolvedCalendar);
 
             console.log('[CreateEventHandler] Event created successfully:', {
                 id: event.id,

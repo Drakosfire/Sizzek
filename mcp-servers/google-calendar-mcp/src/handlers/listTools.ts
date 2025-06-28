@@ -2,35 +2,35 @@ import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Extracted reminder properties definition for reusability
 const remindersInputProperty = {
-    type: "object",
-    description: "Reminder settings for the event",
-    properties: {
-      useDefault: {
-        type: "boolean",
-        description: "Whether to use the default reminders",
-      },
-      overrides: {
-        type: "array",
-        description: "Custom reminders (uses popup notifications by default unless email is specified)",
-        items: {
-          type: "object",
-          properties: {
-            method: {
-              type: "string",
-              enum: ["email", "popup"],
-              description: "Reminder method (defaults to popup unless email is specified)",
-              default: "popup"
-            },
-            minutes: {
-              type: "number",
-              description: "Minutes before the event to trigger the reminder",
-            }
-          },
-          required: ["minutes"]
-        }
-      }
+  type: "object",
+  description: "Reminder settings for the event",
+  properties: {
+    useDefault: {
+      type: "boolean",
+      description: "Whether to use the default reminders",
     },
-    required: ["useDefault"]
+    overrides: {
+      type: "array",
+      description: "Custom reminders (uses popup notifications by default unless email is specified)",
+      items: {
+        type: "object",
+        properties: {
+          method: {
+            type: "string",
+            enum: ["email", "popup"],
+            description: "Reminder method (defaults to popup unless email is specified)",
+            default: "popup"
+          },
+          minutes: {
+            type: "number",
+            description: "Minutes before the event to trigger the reminder",
+          }
+        },
+        required: ["minutes"]
+      }
+    }
+  },
+  required: ["useDefault"]
 };
 
 export function getToolDefinitions() {
@@ -38,7 +38,7 @@ export function getToolDefinitions() {
     tools: [
       {
         name: "list-calendars",
-        description: "List all available calendars",
+        description: "List all available calendars with their IDs and display names. Use this tool first to get the correct calendar IDs for other operations.",
         inputSchema: {
           type: "object",
           properties: {}, // No arguments needed
@@ -55,11 +55,11 @@ export function getToolDefinitions() {
               oneOf: [
                 {
                   type: "string",
-                  description: "ID of a single calendar"
+                  description: "Calendar ID (NOT display name) - use list-calendars tool to get valid IDs. Examples: 'primary', 'user@gmail.com', or 'abc123@group.calendar.google.com'"
                 },
                 {
                   type: "array",
-                  description: "Array of calendar IDs",
+                  description: "Array of calendar IDs (NOT display names) - use list-calendars tool to get valid IDs",
                   items: {
                     type: "string"
                   },
@@ -67,17 +67,17 @@ export function getToolDefinitions() {
                   maxItems: 50
                 }
               ],
-              description: "ID of the calendar(s) to list events from (use 'primary' for the main calendar)",
+              description: "IMPORTANT: Use the actual calendar ID from list-calendars tool, NOT the display name. Example: use 'u34c3smnb57oac2j4plhe4v5fk@group.calendar.google.com' NOT 'Stef and Al'",
             },
             timeMin: {
               type: "string",
               format: "date-time",
-              description: "Start time in ISO format with timezone required (e.g., 2024-01-01T00:00:00Z or 2024-01-01T00:00:00+00:00). Date-time must end with Z (UTC) or +/-HH:MM offset.",
+              description: "Lower bound (inclusive) for an event's end time to filter by. For events on a specific date, use 00:00:00 of that date. ISO format with timezone required (e.g., 2024-06-26T00:00:00-06:00 for start of June 26 in MDT, or 2024-01-01T00:00:00Z for UTC). Date-time must end with Z (UTC) or +/-HH:MM offset.",
             },
             timeMax: {
               type: "string",
               format: "date-time",
-              description: "End time in ISO format with timezone required (e.g., 2024-12-31T23:59:59Z or 2024-12-31T23:59:59+00:00). Date-time must end with Z (UTC) or +/-HH:MM offset.",
+              description: "Upper bound (exclusive) for an event's start time to filter by. For events on a specific date, use 23:59:59 of that date. ISO format with timezone required (e.g., 2024-06-26T23:59:59-06:00 for end of June 26 in MDT, or 2024-12-31T23:59:59Z for UTC). Date-time must end with Z (UTC) or +/-HH:MM offset.",
             },
           },
           required: ["calendarId"],
@@ -91,7 +91,7 @@ export function getToolDefinitions() {
           properties: {
             calendarId: {
               type: "string",
-              description: "ID of the calendar to search events in (use 'primary' for the main calendar)",
+              description: "Calendar ID (NOT display name) - use list-calendars tool to get valid IDs. Examples: 'primary', 'user@gmail.com', or 'abc123@group.calendar.google.com'",
             },
             query: {
               type: "string",
@@ -100,12 +100,12 @@ export function getToolDefinitions() {
             timeMin: {
               type: "string",
               format: "date-time",
-              description: "Start time boundary in ISO format with timezone required (e.g., 2024-01-01T00:00:00Z or 2024-01-01T00:00:00+00:00). Date-time must end with Z (UTC) or +/-HH:MM offset.",
+              description: "Lower bound (inclusive) for an event's end time to filter search results. For events on a specific date, use 00:00:00 of that date. ISO format with timezone required (e.g., 2024-06-26T00:00:00-06:00 for start of June 26 in MDT, or 2024-01-01T00:00:00Z for UTC). Date-time must end with Z (UTC) or +/-HH:MM offset.",
             },
             timeMax: {
               type: "string",
               format: "date-time",
-              description: "End time boundary in ISO format with timezone required (e.g., 2024-12-31T23:59:59Z or 2024-12-31T23:59:59+00:00). Date-time must end with Z (UTC) or +/-HH:MM offset.",
+              description: "Upper bound (exclusive) for an event's start time to filter search results. For events on a specific date, use 23:59:59 of that date. ISO format with timezone required (e.g., 2024-06-26T23:59:59-06:00 for end of June 26 in MDT, or 2024-12-31T23:59:59Z for UTC). Date-time must end with Z (UTC) or +/-HH:MM offset.",
             },
           },
           required: ["calendarId", "query"],
@@ -128,7 +128,7 @@ export function getToolDefinitions() {
           properties: {
             calendarId: {
               type: "string",
-              description: "ID of the calendar to create the event in (use 'primary' for the main calendar)",
+              description: "Calendar ID (NOT display name) - use list-calendars tool to get valid IDs. Examples: 'primary', 'user@gmail.com', or 'abc123@group.calendar.google.com'",
             },
             summary: {
               type: "string",
@@ -197,7 +197,7 @@ export function getToolDefinitions() {
           properties: {
             calendarId: {
               type: "string",
-              description: "ID of the calendar containing the event",
+              description: "Calendar ID (NOT display name) - use list-calendars tool to get valid IDs. Examples: 'primary', 'user@gmail.com', or 'abc123@group.calendar.google.com'",
             },
             eventId: {
               type: "string",
@@ -250,8 +250,8 @@ export function getToolDefinitions() {
               },
             },
             reminders: {
-                ...remindersInputProperty,
-                description: "New reminder settings for the event (optional)",
+              ...remindersInputProperty,
+              description: "New reminder settings for the event (optional)",
             },
             recurrence: {
               type: "array",
@@ -273,7 +273,7 @@ export function getToolDefinitions() {
               description: "Required when modificationScope is 'single'. Original start time of the specific instance to modify in ISO format with timezone (e.g., 2024-08-15T10:00:00-07:00)."
             },
             futureStartDate: {
-              type: "string", 
+              type: "string",
               format: "date-time",
               description: "Required when modificationScope is 'future'. Start date for future modifications in ISO format with timezone (e.g., 2024-08-20T10:00:00-07:00). Must be a future date."
             }
@@ -281,23 +281,23 @@ export function getToolDefinitions() {
           required: ["calendarId", "eventId", "timeZone"], // timeZone is technically required for PATCH
           allOf: [
             {
-              if: { 
-                properties: { 
-                  modificationScope: { const: "single" } 
-                } 
+              if: {
+                properties: {
+                  modificationScope: { const: "single" }
+                }
               },
-              then: { 
-                required: ["originalStartTime"] 
+              then: {
+                required: ["originalStartTime"]
               }
             },
             {
-              if: { 
-                properties: { 
-                  modificationScope: { const: "future" } 
-                } 
+              if: {
+                properties: {
+                  modificationScope: { const: "future" }
+                }
               },
-              then: { 
-                required: ["futureStartDate"] 
+              then: {
+                required: ["futureStartDate"]
               }
             }
           ]
@@ -311,7 +311,7 @@ export function getToolDefinitions() {
           properties: {
             calendarId: {
               type: "string",
-              description: "ID of the calendar containing the event",
+              description: "Calendar ID (NOT display name) - use list-calendars tool to get valid IDs. Examples: 'primary', 'user@gmail.com', or 'abc123@group.calendar.google.com'",
             },
             eventId: {
               type: "string",
@@ -329,11 +329,11 @@ export function getToolDefinitions() {
           properties: {
             timeMin: {
               type: "string",
-              description: "The start of the interval in RFC3339 format",
+              description: "Lower bound (inclusive) for the free/busy query interval in RFC3339 format with timezone (e.g., 2024-06-26T00:00:00-06:00 for start of June 26 in MDT, or 2024-01-01T00:00:00Z for UTC)",
             },
             timeMax: {
               type: "string",
-              description: "The end of the interval in RFC3339 format",
+              description: "Upper bound (exclusive) for the free/busy query interval in RFC3339 format with timezone (e.g., 2024-06-26T23:59:59-06:00 for end of June 26 in MDT, or 2024-12-31T23:59:59Z for UTC)",
             },
             timeZone: {
               type: "string",

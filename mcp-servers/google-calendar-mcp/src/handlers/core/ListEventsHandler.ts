@@ -9,7 +9,7 @@ import { BatchRequestHandler } from "./BatchRequestHandler.js";
 
 // Extended event type to include calendar ID for tracking source
 interface ExtendedEvent extends calendar_v3.Schema$Event {
-  calendarId: string;
+    calendarId: string;
 }
 
 type ListEventsArgs = z.infer<typeof ListEventsArgumentsSchema>;
@@ -17,21 +17,24 @@ type ListEventsArgs = z.infer<typeof ListEventsArgumentsSchema>;
 export class ListEventsHandler extends BaseToolHandler {
     async runTool(args: any, oauth2Client: OAuth2Client): Promise<CallToolResult> {
         const validArgs = ListEventsArgumentsSchema.parse(args);
-        
+
         // Normalize calendarId to always be an array for consistent processing
-        const calendarIds = Array.isArray(validArgs.calendarId) 
-            ? validArgs.calendarId 
+        const calendarIds = Array.isArray(validArgs.calendarId)
+            ? validArgs.calendarId
             : [validArgs.calendarId];
-        
-        const allEvents = await this.fetchEvents(oauth2Client, calendarIds, {
+
+        // Resolve display names to actual calendar IDs using base class method
+        const resolvedCalendarIds = await this.resolveCalendarIds(oauth2Client, calendarIds);
+
+        const allEvents = await this.fetchEvents(oauth2Client, resolvedCalendarIds, {
             timeMin: validArgs.timeMin,
             timeMax: validArgs.timeMax
         });
-        
+
         return {
             content: [{
                 type: "text",
-                text: this.formatEventList(allEvents, calendarIds),
+                text: this.formatEventList(allEvents, resolvedCalendarIds),
             }],
         };
     }
@@ -44,7 +47,7 @@ export class ListEventsHandler extends BaseToolHandler {
         if (calendarIds.length === 1) {
             return this.fetchSingleCalendarEvents(client, calendarIds[0], options);
         }
-        
+
         return this.fetchMultipleCalendarEvents(client, calendarIds, options);
     }
 
@@ -62,7 +65,7 @@ export class ListEventsHandler extends BaseToolHandler {
                 singleEvents: true,
                 orderBy: 'startTime'
             });
-            
+
             // Add calendarId to events for consistent interface
             return (response.data.items || []).map(event => ({
                 ...event,
@@ -79,20 +82,20 @@ export class ListEventsHandler extends BaseToolHandler {
         options: { timeMin?: string; timeMax?: string }
     ): Promise<ExtendedEvent[]> {
         const batchHandler = new BatchRequestHandler(client);
-        
+
         const requests = calendarIds.map(calendarId => ({
             method: "GET" as const,
             path: this.buildEventsPath(calendarId, options)
         }));
-        
+
         const responses = await batchHandler.executeBatch(requests);
-        
+
         const { events, errors } = this.processBatchResponses(responses, calendarIds);
-        
+
         if (errors.length > 0) {
             console.warn("Some calendars had errors:", errors.map(e => `${e.calendarId}: ${e.error}`));
         }
-        
+
         return this.sortEventsByStartTime(events);
     }
 
@@ -103,20 +106,20 @@ export class ListEventsHandler extends BaseToolHandler {
             ...(options.timeMin && { timeMin: options.timeMin }),
             ...(options.timeMax && { timeMax: options.timeMax })
         });
-        
+
         return `/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`;
     }
 
     private processBatchResponses(
-        responses: any[], 
+        responses: any[],
         calendarIds: string[]
     ): { events: ExtendedEvent[]; errors: Array<{ calendarId: string; error: string }> } {
         const events: ExtendedEvent[] = [];
         const errors: Array<{ calendarId: string; error: string }> = [];
-        
+
         responses.forEach((response, index) => {
             const calendarId = calendarIds[index];
-            
+
             if (response.statusCode === 200 && response.body?.items) {
                 const calendarEvents: ExtendedEvent[] = response.body.items.map((event: any) => ({
                     ...event,
@@ -124,13 +127,13 @@ export class ListEventsHandler extends BaseToolHandler {
                 }));
                 events.push(...calendarEvents);
             } else {
-                const errorMessage = response.body?.error?.message || 
-                                   response.body?.message || 
-                                   `HTTP ${response.statusCode}`;
+                const errorMessage = response.body?.error?.message ||
+                    response.body?.message ||
+                    `HTTP ${response.statusCode}`;
                 errors.push({ calendarId, error: errorMessage });
             }
         });
-        
+
         return { events, errors };
     }
 
@@ -146,25 +149,25 @@ export class ListEventsHandler extends BaseToolHandler {
         if (events.length === 0) {
             return `No events found in ${calendarIds.length} calendar(s).`;
         }
-        
+
         if (calendarIds.length === 1) {
             return formatEventList(events);
         }
-        
+
         return this.formatMultiCalendarEvents(events, calendarIds);
     }
 
     private formatMultiCalendarEvents(events: ExtendedEvent[], calendarIds: string[]): string {
         const grouped = this.groupEventsByCalendar(events);
-        
+
         let output = `Found ${events.length} events across ${calendarIds.length} calendars:\n\n`;
-        
+
         for (const [calendarId, calEvents] of Object.entries(grouped)) {
             output += `Calendar: ${calendarId}\n`;
             output += formatEventList(calEvents);
             output += '\n';
         }
-        
+
         return output;
     }
 
