@@ -9,7 +9,7 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { StorageFactory } from '@sizzek/mcp-data';
+import { StorageFactory } from 'mcp-data';
 import { TodoodlesWebUIManager } from './web-ui-integration.js';
 
 // Get the directory name of the current module

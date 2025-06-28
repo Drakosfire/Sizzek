@@ -1,4 +1,4 @@
-import { MCPWebUI, createTodoSchema, UISchema } from '@sizzek/mcp-web-ui';
+import { MCPWebUI, createTodoSchema, UISchema } from 'mcp-web-ui';
 
 // TodoodleItem interface (matching the main file)
 interface TodoodleItem {
