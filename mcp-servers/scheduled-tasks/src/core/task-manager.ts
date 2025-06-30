@@ -1,30 +1,33 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Task, TaskStatus, CreateTaskRequest, TaskExecution, Schedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
+import { Task, TaskStatus, CreateTaskRequest, UpdateTaskRequest, TaskExecution, Schedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
 import { ScheduleValidator } from './schedule-validator.js';
 import { LibreChatClient } from '../http/librechat-client.js';
-import { TaskStore } from '../storage/task-store.js';
+import { TaskStorageManager } from '../storage/TaskStorageManager.js';
+import { TaskStorageManagerConfig } from '../types/storage.js';
 
 export class TaskManager {
     private tasks = new Map<string, Task>();
-    private taskStore: TaskStore;
+    private taskStorageManager: TaskStorageManager;
     private scheduledTimeouts = new Map<string, NodeJS.Timeout>();
     private runningTasks = new Set<string>();
     private validator = new ScheduleValidator();
     private librechatClient: LibreChatClient | undefined;
+    private userId?: string | undefined;
 
-    constructor(librechatClient?: LibreChatClient, taskStoreConfig?: Partial<import('../storage/task-store.js').TaskStoreConfig>) {
+    constructor(librechatClient?: LibreChatClient, storageConfig?: Partial<TaskStorageManagerConfig>, userId?: string) {
         this.librechatClient = librechatClient;
-        this.taskStore = new TaskStore(taskStoreConfig);
+        this.taskStorageManager = new TaskStorageManager(storageConfig);
+        this.userId = userId;
     }
 
     async initialize(): Promise<void> {
-        console.log('🔧 Initializing TaskManager with persistent storage...');
+        console.log('🔧 Initializing TaskManager with unified storage...');
 
-        // Initialize the task store
-        await this.taskStore.initialize();
+        // Initialize the storage manager
+        await this.taskStorageManager.initialize();
 
         // Load existing tasks from storage
-        const savedTasks = await this.taskStore.loadTasks();
+        const savedTasks = await this.taskStorageManager.loadTasks(this.userId);
 
         // Populate in-memory map for quick access
         this.tasks.clear();
@@ -42,7 +45,7 @@ export class TaskManager {
 
     private async persistTasks(): Promise<void> {
         const tasks = Array.from(this.tasks.values());
-        await this.taskStore.saveTasks(tasks);
+        await this.taskStorageManager.saveTasks(tasks, this.userId);
     }
 
     async createTask(request: CreateTaskRequest): Promise<Task> {
@@ -85,6 +88,66 @@ export class TaskManager {
 
         if (validation.warnings.length > 0) {
             console.warn(`⚠️  Warnings: ${validation.warnings.join(', ')}`);
+        }
+
+        return task;
+    }
+
+    async updateTask(taskId: string, request: UpdateTaskRequest): Promise<Task> {
+        const task = this.tasks.get(taskId);
+        if (!task) {
+            throw new Error(`Task not found: ${taskId}`);
+        }
+
+        // Validate new schedule if provided
+        if (request.schedule) {
+            const validation = this.validator.validate(request.schedule);
+            if (!validation.isValid) {
+                throw new Error(`Invalid schedule: ${validation.errors.join(', ')}`);
+            }
+        }
+
+        // Store the original enabled state and schedule to determine if rescheduling is needed
+        const wasEnabled = task.enabled;
+        const scheduleChanged = request.schedule !== undefined;
+        const enabledChanged = request.enabled !== undefined && request.enabled !== task.enabled;
+
+        // Update task properties
+        if (request.name !== undefined) task.name = request.name;
+        if (request.description !== undefined) task.description = request.description;
+        if (request.schedule !== undefined) task.schedule = request.schedule;
+        if (request.message !== undefined) task.message = request.message;
+        if (request.enabled !== undefined) task.enabled = request.enabled;
+
+        task.updatedAt = new Date();
+
+        // Clear existing timeout if the task was scheduled
+        const timeout = this.scheduledTimeouts.get(taskId);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.scheduledTimeouts.delete(taskId);
+        }
+
+        // Handle rescheduling logic
+        if (task.enabled) {
+            if (scheduleChanged || enabledChanged || wasEnabled) {
+                // Reset next run since schedule may have changed
+                task.nextRun = undefined;
+                task.status = TaskStatus.PENDING;
+                await this.scheduleTask(task);
+            }
+        } else {
+            // Task is disabled, clear scheduling
+            task.status = TaskStatus.PAUSED;
+            task.nextRun = undefined;
+        }
+
+        // Persist updated task
+        await this.persistTasks();
+
+        console.log(`✅ Updated task: ${task.name} (${task.id})`);
+        if (request.schedule) {
+            console.log(`📋 New schedule: ${this.validator.generateHumanReadable(task.schedule)}`);
         }
 
         return task;
@@ -403,5 +466,21 @@ export class TaskManager {
 
     getTasksByStatus(status: TaskStatus): Task[] {
         return this.getAllTasks().filter(task => task.status === status);
+    }
+
+    /**
+     * Clean up storage connections and resources
+     */
+    async cleanup(): Promise<void> {
+        // Clear all scheduled timeouts
+        for (const timeout of this.scheduledTimeouts.values()) {
+            clearTimeout(timeout);
+        }
+        this.scheduledTimeouts.clear();
+
+        // Clean up storage manager
+        await this.taskStorageManager.cleanup();
+
+        console.log('🧹 TaskManager cleanup completed');
     }
 } 

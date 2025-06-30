@@ -91,6 +91,14 @@ export interface CreateTaskRequest {
     enabled: boolean | undefined;
 }
 
+export interface UpdateTaskRequest {
+    name?: string;
+    description?: string;
+    schedule?: Schedule;
+    message?: string;
+    enabled?: boolean;
+}
+
 export interface ValidationResult {
     isValid: boolean;
     errors: string[];

@@ -7,10 +7,10 @@
             "DOM"
         ],
         "types": [
-            "node"
+            "node",
+            "jest"
         ],
         "outDir": "./dist",
-        "rootDir": "./src",
         "strict": true,
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
@@ -29,11 +29,11 @@
         "moduleResolution": "node"
     },
     "include": [
-        "src/**/*"
+        "src/**/*",
+        "tests/**/*"
     ],
     "exclude": [
         "node_modules",
-        "dist",
-        "tests"
+        "dist"
     ]
 }

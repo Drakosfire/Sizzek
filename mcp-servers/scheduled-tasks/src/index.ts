@@ -9,6 +9,7 @@ import {
 import { TaskManager } from './core/task-manager.js';
 import { ScheduleValidator } from './core/schedule-validator.js';
 import { LibreChatClient } from './http/librechat-client.js';
+import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -50,9 +51,22 @@ const librechatClient = LIBRECHAT_API_KEY ? new LibreChatClient({
     retryDelay: RETRY_DELAY
 }) : undefined;
 
-// Initialize the task manager with LibreChat client and persistent storage
-const taskManager = new TaskManager(librechatClient);
+// Extract user ID from environment for user-based storage (for future use)
+// const extractUserId = (request: any): string | undefined => {
+//     // Try multiple sources for user ID
+//     if (request?.meta?.userId) return request.meta.userId;
+//     if (request?.context?.userId) return request.context.userId;
+//     if (request?.userId) return request.userId;
+//     if (process.env.MCP_USER_ID) return process.env.MCP_USER_ID;
+//     return undefined;
+// };
+
+// Initialize the task manager with LibreChat client and unified storage
+const taskManager = new TaskManager(librechatClient, undefined, process.env.MCP_USER_ID);
 const validator = new ScheduleValidator();
+
+// Initialize the web UI manager
+const webUIManager = new ScheduledTasksWebUIManager(taskManager);
 
 // Create the MCP server
 const server = new Server({
@@ -358,6 +372,95 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
+                name: "update_scheduled_task",
+                description: "Update an existing scheduled task. Only provide the fields you want to change.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        taskId: {
+                            type: "string",
+                            description: "UUID of the task to update"
+                        },
+                        name: {
+                            type: "string",
+                            description: "New name for the task"
+                        },
+                        description: {
+                            type: "string",
+                            description: "New description for the task"
+                        },
+                        schedule: {
+                            type: "object",
+                            description: "New schedule for the task. Can be any of the schedule types (once, scheduled, daily, weekly, monthly, interval)",
+                            oneOf: [
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["once"] },
+                                        delayMinutes: { type: "number", minimum: 0.1 }
+                                    },
+                                    required: ["type", "delayMinutes"]
+                                },
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["scheduled"] },
+                                        datetime: { type: "string" }
+                                    },
+                                    required: ["type", "datetime"]
+                                },
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["daily"] },
+                                        time: { type: "string", pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$" },
+                                        weekdaysOnly: { type: "boolean" }
+                                    },
+                                    required: ["type", "time"]
+                                },
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["weekly"] },
+                                        dayOfWeek: { type: "string", enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] },
+                                        time: { type: "string", pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$" }
+                                    },
+                                    required: ["type", "dayOfWeek", "time"]
+                                },
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["monthly"] },
+                                        dayOfMonth: { type: "integer", minimum: 1, maximum: 31 },
+                                        time: { type: "string", pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$" }
+                                    },
+                                    required: ["type", "dayOfMonth", "time"]
+                                },
+                                {
+                                    type: "object",
+                                    properties: {
+                                        type: { type: "string", enum: ["interval"] },
+                                        every: { type: "integer", minimum: 1 },
+                                        unit: { type: "string", enum: ["minutes", "hours", "days"] },
+                                        startTime: { type: "string", pattern: "^([0-1][0-9]|2[0-3]):([0-5][0-9])$" }
+                                    },
+                                    required: ["type", "every", "unit"]
+                                }
+                            ]
+                        },
+                        message: {
+                            type: "string",
+                            description: "New message to send when task triggers"
+                        },
+                        enabled: {
+                            type: "boolean",
+                            description: "Whether the task should be enabled or disabled"
+                        }
+                    },
+                    required: ["taskId"]
+                }
+            },
+            {
                 name: "delete_scheduled_task",
                 description: "Permanently delete a scheduled task",
                 inputSchema: {
@@ -369,6 +472,49 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         }
                     },
                     required: ["taskId"]
+                }
+            },
+            {
+                name: "get_web_ui",
+                description: "Get the web UI HTML for displaying scheduled tasks in a browser interface",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        userId: {
+                            type: "string",
+                            description: "User ID for the session"
+                        }
+                    },
+                    additionalProperties: false
+                }
+            },
+            {
+                name: "web_ui_update",
+                description: "Handle user interactions from the web UI interface",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        action: {
+                            type: "string",
+                            description: "Action to perform (toggle, delete, run-now, etc.)",
+                            enum: ["toggle", "delete", "run-now"]
+                        },
+                        data: {
+                            type: "object",
+                            description: "Data for the action (task ID, name, etc.)",
+                            properties: {
+                                id: { type: "string", description: "Task ID" },
+                                name: { type: "string", description: "Task name" },
+                                enabled: { type: "boolean", description: "Current enabled state" }
+                            },
+                            required: ["id"]
+                        },
+                        userId: {
+                            type: "string",
+                            description: "User ID for the session"
+                        }
+                    },
+                    required: ["action", "data"]
                 }
             }
         ]
@@ -686,6 +832,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 throw new Error(`Failed to disable scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
 
+        case "update_scheduled_task":
+            try {
+                const updateRequest: any = {};
+                if (args.name !== undefined) updateRequest.name = args.name;
+                if (args.description !== undefined) updateRequest.description = args.description;
+                if (args.schedule !== undefined) updateRequest.schedule = args.schedule;
+                if (args.message !== undefined) updateRequest.message = args.message;
+                if (args.enabled !== undefined) updateRequest.enabled = args.enabled;
+
+                const task = await taskManager.updateTask(args.taskId, updateRequest);
+
+                const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ Updated scheduled task: "${task.name}"\n` +
+                                `ID: ${task.id}\n` +
+                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                                `Status: ${task.status}\n` +
+                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                                `Enabled: ${task.enabled}\n` +
+                                `Integration: ${librechatStatus}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error updating scheduled task:', error);
+                throw new Error(`Failed to update scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
         case "delete_scheduled_task":
             try {
                 const task = taskManager.getTask(args.taskId);
@@ -710,6 +888,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 throw new Error(`Failed to delete scheduled task: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
 
+        case "get_web_ui":
+            try {
+                const userId = args.userId || 'default';
+                return await webUIManager.handleGetWebUI(userId);
+            } catch (error) {
+                console.error('Error getting web UI:', error);
+                throw new Error(`Failed to get web UI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
+        case "web_ui_update":
+            try {
+                const { action, data } = args;
+                const result = await webUIManager['handleUIUpdate'](action, data);
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: result.success
+                                ? `✅ ${result.message || 'Action completed successfully'}`
+                                : `❌ ${result.error || 'Action failed'}`
+                        }
+                    ]
+                };
+            } catch (error) {
+                console.error('Error handling web UI update:', error);
+                throw new Error(`Failed to handle web UI update: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
@@ -717,23 +924,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
 // Start the server
 async function main() {
-    // Initialize the task manager with persistent storage
+    // Initialize the task manager with unified storage
     await taskManager.initialize();
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Scheduled Tasks MCP Server running on stdio");
 
-    // Handle process termination
-    process.on('SIGTERM', () => {
-        console.error('Received SIGTERM signal');
+    // Handle process termination with proper cleanup
+    const cleanup = async () => {
+        console.error('Shutting down server...');
+        await taskManager.cleanup();
         process.exit(0);
-    });
+    };
 
-    process.on('SIGINT', () => {
-        console.error('Received SIGINT signal');
-        process.exit(0);
-    });
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
+    process.on('beforeExit', cleanup);
 }
 
 main().catch((error) => {
