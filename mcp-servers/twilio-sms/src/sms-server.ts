@@ -30,6 +30,46 @@ const envPath = path.resolve(__dirname, '..', '.env');
 console.error('[SMS-SERVER] Loading .env file from:', envPath);
 dotenv.config({ path: envPath });
 
+// Twilio credentials for media access
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+
+/**
+ * Fetches media from Twilio URL and converts to base64
+ * @param url Twilio media URL
+ * @param contentType Expected content type
+ * @returns Promise<string> Base64 encoded media data
+ */
+async function fetchMediaAsBase64(url: string, contentType: string): Promise<string> {
+    try {
+        console.error(`[SMS-SERVER] Fetching media from URL: ${url.substring(0, 100)}...`);
+
+        if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+            throw new Error('Twilio credentials not configured');
+        }
+
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            auth: {
+                username: TWILIO_ACCOUNT_SID,
+                password: TWILIO_AUTH_TOKEN
+            },
+            timeout: 30000 // 30 second timeout
+        });
+
+        const base64Data = Buffer.from(response.data).toString('base64');
+        console.error(`[SMS-SERVER] Successfully converted media to base64, size: ${Math.round(base64Data.length / 1024)}KB`);
+
+        // Clean up response data
+        response.data = null;
+
+        return base64Data;
+    } catch (error) {
+        console.error(`[SMS-SERVER] Failed to fetch media from URL ${url}:`, error);
+        throw error;
+    }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3081;
 const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
@@ -83,11 +123,26 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 interface SMSPayload {
     from: string;
-    body: string;
+    body?: string; // Make body optional for media-only MMS
     messageSid?: string; // Twilio message SID for true duplicate detection
+    message_sid?: string; // Alternative field name for message SID
+    message_type?: 'SMS' | 'MMS'; // Message type from enhanced router
+    num_media?: number; // Number of media items
+    media?: Array<{
+        url: string;
+        content_type: string;
+        index: number;
+        supported: boolean;
+        base64?: string; // Base64 encoded media data (populated by server)
+        filename?: string; // Generated filename for LibreChat
+    }>; // Media array from enhanced router
     metadata?: {
         conversationId?: string;
         phoneNumber?: string;
+        messageType?: 'SMS' | 'MMS';
+        mediaCount?: number;
+        supportedMediaCount?: number;
+        unsupportedMediaCount?: number;
         [key: string]: any;
     };
     [key: string]: any;
@@ -158,9 +213,71 @@ setInterval(() => {
     console.error(`[SMS-SERVER] Cleaned up deduplication maps - LibreChat: ${recentMessages.size}, Webhook: ${webhookMessages.size}`);
 }, 60000);
 
-async function forwardToClient(message: string, apiKey: string, phoneNumber: string, from: string) {
+/**
+ * Helper function to get file extension from MIME type
+ * @param mimeType MIME type string
+ * @returns File extension
+ */
+function getExtensionFromMimeType(mimeType: string): string {
+    const mimeMap: { [key: string]: string } = {
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'video/mp4': 'mp4',
+        'video/mpeg': 'mpg',
+        'audio/mpeg': 'mp3',
+        'audio/wav': 'wav',
+        'application/pdf': 'pdf',
+        'text/plain': 'txt'
+    };
+
+    return mimeMap[mimeType.toLowerCase()] || 'bin';
+}
+
+async function forwardToClient(message: string, apiKey: string, phoneNumber: string, from: string, media?: Array<{ url: string; content_type: string; index: number; supported: boolean; base64?: string; filename?: string }>) {
     // Use placeholder conversation ID for SMS routing - let LibreChat handle phone-based discovery
     const url = `http://localhost:3080/api/messages/sms-conversation`;
+
+    // Process media: convert URLs to base64 for supported media
+    let processedMedia = media;
+    if (media && media.length > 0) {
+        console.error(`[SMS-SERVER] Processing ${media.length} media items...`);
+
+        processedMedia = await Promise.all(media.map(async (mediaItem) => {
+            if (!mediaItem.supported) {
+                // Skip unsupported media
+                console.error(`[SMS-SERVER] Skipping unsupported media: ${mediaItem.content_type}`);
+                return mediaItem;
+            }
+
+            try {
+                // Generate filename for LibreChat
+                const extension = getExtensionFromMimeType(mediaItem.content_type);
+                const filename = `mms_media_${mediaItem.index}.${extension}`;
+
+                // Fetch and convert to base64
+                const base64Data = await fetchMediaAsBase64(mediaItem.url, mediaItem.content_type);
+
+                return {
+                    ...mediaItem,
+                    base64: base64Data,
+                    filename: filename
+                };
+            } catch (error) {
+                console.error(`[SMS-SERVER] Failed to process media item ${mediaItem.index}:`, error);
+                // Return original item without base64 (will be handled as unsupported)
+                return {
+                    ...mediaItem,
+                    supported: false // Mark as unsupported due to processing failure
+                };
+            }
+        }));
+
+        const successfullyProcessed = processedMedia.filter(m => m.supported && m.base64).length;
+        console.error(`[SMS-SERVER] Successfully processed ${successfullyProcessed}/${media.length} media items`);
+    }
 
     // Check for duplicate messages
     const messageKey = `${phoneNumber}:${message}`;
@@ -183,23 +300,87 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
     // CRITICAL: Add phone number context to EVERY message so agent knows who to reply to
     const contact = contactManager.getContact(phoneNumber);
     const contactName = contact?.name || `Unknown Contact`;
-    contentsWithPhoneNumber = `[SMS from ${contactName} (${phoneNumber})]: ${contentsWithPhoneNumber}`;
+
+    // Format message with media information if present
+    let formattedMessage = contentsWithPhoneNumber;
+    if (processedMedia && processedMedia.length > 0) {
+        const messageType = processedMedia.length > 0 ? 'MMS' : 'SMS';
+        const supportedMedia = processedMedia.filter(m => m.supported && m.base64);
+        const unsupportedMedia = processedMedia.filter(m => !m.supported || !m.base64);
+
+        let mediaDescription = `\n[${messageType} with ${processedMedia.length} media item(s):`;
+
+        if (supportedMedia.length > 0) {
+            mediaDescription += `\nSupported media:`;
+            supportedMedia.forEach(m => {
+                const sizeKB = m.base64 ? Math.round(m.base64.length * 3 / 4 / 1024) : 0; // Estimate original size
+                mediaDescription += `\n- ${m.content_type} (${sizeKB}KB): ${m.filename || `media_${m.index}`}`;
+            });
+        }
+
+        if (unsupportedMedia.length > 0) {
+            mediaDescription += `\nUnsupported media (${unsupportedMedia.length} item(s)):`;
+            unsupportedMedia.forEach(m => {
+                mediaDescription += `\n- ${m.content_type}: Failed to process`;
+            });
+        }
+
+        mediaDescription += `]`;
+
+        if (message.trim()) {
+            formattedMessage = `${contentsWithPhoneNumber}${mediaDescription}`;
+        } else {
+            formattedMessage = `[Media-only message]${mediaDescription}`;
+        }
+    }
+
+    contentsWithPhoneNumber = `[${processedMedia && processedMedia.length > 0 ? 'MMS' : 'SMS'} from ${contactName} (${phoneNumber})]`;
 
     // Get conversation title from contact manager
     const conversationTitle = contactManager.getConversationTitle(phoneNumber);
+
+    // Create attachments array with base64 data for LibreChat
+    const attachments = processedMedia && processedMedia.length > 0
+        ? processedMedia
+            .filter(m => m.supported && m.base64) // Only include successfully processed media
+            .map(m => {
+                const base64Data = m.base64!; // Safe since we filtered for it
+                return {
+                    file_id: `mms_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    filename: m.filename || `mms_media_${m.index}.${getExtensionFromMimeType(m.content_type)}`,
+                    type: m.content_type,
+                    filepath: `data:${m.content_type};base64,${base64Data}`, // Data URL format
+                    source: 'base64', // Indicate this is base64 data
+                    height: m.content_type.startsWith('image/') ? 1024 : undefined, // Trigger image processing
+                    width: m.content_type.startsWith('image/') ? 1024 : undefined,
+                    metadata: {
+                        source: 'twilio_mms',
+                        originalUrl: m.url,
+                        messageType: 'MMS',
+                        index: m.index,
+                        sizeKB: Math.round(base64Data.length * 3 / 4 / 1024)
+                    }
+                };
+            })
+        : undefined;
 
     const payload = {
         role: "external",
         content: contentsWithPhoneNumber,
         from: from,
+        attachments: attachments, // Use attachments instead of media for LibreChat
         metadata: {
             endpoint: "agents",
             agent_id: AGENT_ID,
             model: AGENT_MODEL,
             phoneNumber: phoneNumber,
-            source: 'sms',
+            source: processedMedia && processedMedia.length > 0 ? 'mms' : 'sms',
+            messageType: processedMedia && processedMedia.length > 0 ? 'MMS' : 'SMS',
+            mediaCount: processedMedia?.length || 0,
+            supportedMediaCount: processedMedia?.filter(m => m.supported && m.base64).length || 0,
+            unsupportedMediaCount: processedMedia?.filter(m => !m.supported || !m.base64).length || 0,
             title: conversationTitle,
-            additional_instructions: `CRITICAL SMS CONTEXT: You are responding to an SMS from ${phoneNumber}. If you need to send an SMS response, you MUST use the phone number ${phoneNumber} in the send_sms tool. This is the ONLY phone number you should use for SMS responses.`,
+            additional_instructions: `CRITICAL SMS CONTEXT: You are responding to ${processedMedia && processedMedia.length > 0 ? 'an MMS' : 'an SMS'} from ${phoneNumber}. If you need to send an SMS response, you MUST use the phone number ${phoneNumber} in the send_sms tool. This is the ONLY phone number you should use for SMS responses.`,
             conversationMetadata: {
                 title: conversationTitle,
                 endpoint: "agents",
@@ -254,20 +435,30 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
             console.error('[SMS-SERVER] Error forwarding to Client:', {
                 status: error.response?.status,
                 statusText: error.response?.statusText,
-                data: error.response?.data,
-                message: error.message
+                error: error.response?.data?.error || 'Unknown error',
+                payloadSize: payload ? JSON.stringify(payload).length : 0
             });
         } else {
-            console.error('[SMS-SERVER] Error forwarding to Client:', error);
+            console.error('[SMS-SERVER] Error forwarding to Client:', error instanceof Error ? error.message : 'Unknown error');
         }
         throw error;
     }
 }
 
 app.post('/api/receive-sms', async (req, res) => {
-    console.error('[SMS-SERVER] === Incoming SMS ===');
-    const { from, body, metadata, messageSid } = req.body as SMSPayload;
-    console.error(`[SMS-SERVER] From: ${from}, Message: "${body}", MessageSid: ${messageSid || 'N/A'}`);
+    console.error('[SMS-SERVER] === Incoming SMS/MMS ===');
+    const { from, body, metadata, messageSid, message_sid, message_type, num_media, media } = req.body as SMSPayload;
+
+    // Use either messageSid or message_sid for compatibility
+    const actualMessageSid = messageSid || message_sid;
+    const messageType = message_type || metadata?.messageType || 'SMS';
+    const mediaCount = num_media || metadata?.mediaCount || 0;
+
+    console.error(`[SMS-SERVER] From: ${from}, Type: ${messageType}, Message: "${body || '[media only]'}", MessageSid: ${actualMessageSid || 'N/A'}, Media: ${mediaCount}`);
+
+    if (media && media.length > 0) {
+        console.error('[SMS-SERVER] Media items:', media.map(m => `${m.content_type} (${m.supported ? 'supported' : 'unsupported'}): ${m.url}`));
+    }
 
     const authHeader = req.headers['authorization'];
 
@@ -277,9 +468,18 @@ app.post('/api/receive-sms', async (req, res) => {
         return;
     }
 
-    if (!from || !body) {
-        console.error('[SMS-SERVER] Bad request: missing required fields', { from, body });
-        res.status(400).json({ error: 'Missing required fields: from, body' });
+    // Updated validation: require 'from' and either 'body' or media
+    if (!from) {
+        console.error('[SMS-SERVER] Bad request: missing from field', { from });
+        res.status(400).json({ error: 'Missing required field: from' });
+        return;
+    }
+
+    // For MMS, allow empty body if there's media
+    const hasContent = body || (media && media.length > 0);
+    if (!hasContent) {
+        console.error('[SMS-SERVER] Bad request: no content (body or media)', { body, mediaCount: media?.length || 0 });
+        res.status(400).json({ error: 'Missing content: must have either body text or media' });
         return;
     }
 
@@ -295,7 +495,7 @@ app.post('/api/receive-sms', async (req, res) => {
 
     // Check for webhook-level duplicates (prevent Twilio retries from causing duplicate processing)
     // Use MessageSid if available (most reliable), otherwise fall back to content-based key
-    const webhookKey = messageSid ? `sid:${messageSid}` : `${phoneNumber}:${body}`;
+    const webhookKey = actualMessageSid ? `sid:${actualMessageSid}` : `${phoneNumber}:${body || '[media]'}`;
     const now = Date.now();
     const lastWebhookTime = webhookMessages.get(webhookKey);
 
@@ -324,16 +524,18 @@ app.post('/api/receive-sms', async (req, res) => {
             // Update contact information
             contactManager.addOrUpdateContact(phoneNumber, {}, '');
 
-            // Check if the message contains a name response
-            const nameMatch = body.match(/^Name:\s*(.+)$/i);
-            if (nameMatch) {
-                const name = nameMatch[1].trim();
-                contactManager.updateContactName(phoneNumber, name);
-                console.error('[SMS-SERVER] Name updated asynchronously:', name);
-                return;
+            // Check if the message contains a name response (only for text messages)
+            if (body) {
+                const nameMatch = body.match(/^Name:\s*(.+)$/i);
+                if (nameMatch) {
+                    const name = nameMatch[1].trim();
+                    contactManager.updateContactName(phoneNumber, name);
+                    console.error('[SMS-SERVER] Name updated asynchronously:', name);
+                    return;
+                }
             }
 
-            await forwardToClient(body, externalMessageApiKey, phoneNumber, from);
+            await forwardToClient(body || '', externalMessageApiKey, phoneNumber, from, media);
             console.error('[SMS-SERVER] Message processed successfully');
         } catch (error) {
             console.error('[SMS-SERVER] Error processing message asynchronously:', error);
