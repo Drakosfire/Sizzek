@@ -34,9 +34,36 @@ export class TaskManager {
         for (const task of savedTasks) {
             this.tasks.set(task.id, task);
 
-            // Reschedule enabled tasks that were scheduled
+            // Handle recovery of scheduled tasks
             if (task.enabled && task.status === TaskStatus.SCHEDULED && task.nextRun) {
-                await this.scheduleTask(task);
+                const now = new Date();
+                const nextRunTime = new Date(task.nextRun);
+
+                if (nextRunTime <= now) {
+                    // Task is overdue
+                    console.log(`⚠️  Task overdue: ${task.name} (was scheduled for ${nextRunTime.toISOString()})`);
+
+                    if (task.schedule.type === 'once' || task.schedule.type === 'scheduled') {
+                        // One-time tasks that are overdue should be executed immediately
+                        console.log(`🚀 Executing overdue one-time task: ${task.name}`);
+                        setImmediate(() => this.executeTask(task));
+                    } else {
+                        // Recurring tasks should be rescheduled for the next occurrence
+                        console.log(`📅 Rescheduling overdue recurring task: ${task.name}`);
+                        await this.scheduleTask(task);
+                    }
+                } else {
+                    // Task is scheduled for the future, restore the scheduling
+                    console.log(`📅 Restoring scheduled task: ${task.name} (next run: ${nextRunTime.toISOString()})`);
+                    const msUntilRun = nextRunTime.getTime() - now.getTime();
+                    console.log(`⏰ Time until execution: ${this.formatDuration(msUntilRun)}`);
+
+                    const timeout = setTimeout(async () => {
+                        await this.executeTask(task);
+                    }, msUntilRun);
+
+                    this.scheduledTimeouts.set(task.id, timeout);
+                }
             }
         }
 

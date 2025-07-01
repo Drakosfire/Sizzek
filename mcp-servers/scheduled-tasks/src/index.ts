@@ -13,14 +13,19 @@ import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables from .env file
-const envPath = path.resolve(__dirname, '..', '.env');
+// When compiled, __dirname will be 'dist/src/', so we need to go up two levels to reach project root
+const envPath = path.resolve(__dirname, '..', '..', '.env');
 console.error('Loading .env file from:', envPath);
+
+// Check if .env file exists synchronously
+console.error('File exists:', existsSync(envPath));
 dotenv.config({ path: envPath });
 
 // Environment variables validation
@@ -36,6 +41,17 @@ console.error('Environment variables loaded:');
 console.error('LIBRECHAT_ENDPOINT:', LIBRECHAT_ENDPOINT);
 console.error('LIBRECHAT_API_KEY:', LIBRECHAT_API_KEY ? '✓ Set' : '✗ Not set');
 console.error('LIBRECHAT_CONVERSATION_ID:', LIBRECHAT_CONVERSATION_ID || 'Not set (optional)');
+
+// Debug logging for MCP storage environment variables
+console.error('\nMCP Storage Environment Variables:');
+console.error('MCP_STORAGE_TYPE:', process.env.MCP_STORAGE_TYPE || 'Not set (will default to json)');
+console.error('MCP_USER_BASED:', process.env.MCP_USER_BASED || 'Not set (will default to false)');
+console.error('MCP_USER_ID:', process.env.MCP_USER_ID || 'Not set (will default to default)');
+console.error('MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? '✓ Set' : '✗ Not set');
+console.error('MONGODB_DATABASE:', process.env.MONGODB_DATABASE || 'Not set (will default to LibreChat)');
+console.error('MONGODB_COLLECTION:', process.env.MONGODB_COLLECTION || 'Not set (will default to scheduled_tasks)');
+console.error('TASKS_FILE_PATH:', process.env.TASKS_FILE_PATH || 'Not set (will default to ./tasks.json)');
+console.error('CREDS_KEY:', process.env.CREDS_KEY ? '✓ Set' : '✗ Not set');
 
 if (!LIBRECHAT_API_KEY) {
     console.error('Warning: LIBRECHAT_API_KEY not set. Tasks will only log messages instead of triggering LibreChat.');
@@ -924,23 +940,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
 // Start the server
 async function main() {
-    // Initialize the task manager with unified storage
-    await taskManager.initialize();
+    console.error('🚀 Starting Scheduled Tasks MCP Server...');
 
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Scheduled Tasks MCP Server running on stdio");
+    try {
+        // Initialize the task manager with unified storage
+        console.error('🔧 Initializing TaskManager...');
+        await taskManager.initialize();
+        console.error('✅ TaskManager initialization completed');
 
-    // Handle process termination with proper cleanup
-    const cleanup = async () => {
-        console.error('Shutting down server...');
-        await taskManager.cleanup();
-        process.exit(0);
-    };
+        console.error('🔌 Setting up MCP transport...');
+        const transport = new StdioServerTransport();
+        await server.connect(transport);
+        console.error("✅ Scheduled Tasks MCP Server running on stdio");
 
-    process.on('SIGTERM', cleanup);
-    process.on('SIGINT', cleanup);
-    process.on('beforeExit', cleanup);
+        // Handle process termination with proper cleanup
+        const cleanup = async () => {
+            console.error('🛑 Shutting down server...');
+            try {
+                await taskManager.cleanup();
+                console.error('✅ Server cleanup completed');
+            } catch (cleanupError) {
+                console.error('❌ Error during cleanup:', cleanupError);
+            }
+            process.exit(0);
+        };
+
+        process.on('SIGTERM', cleanup);
+        process.on('SIGINT', cleanup);
+        process.on('beforeExit', cleanup);
+
+    } catch (error) {
+        console.error('❌ Failed to initialize server:', error);
+        console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+        throw error;
+    }
 }
 
 main().catch((error) => {
