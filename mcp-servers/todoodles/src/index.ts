@@ -199,7 +199,56 @@ export class UserAwareTodoodlesManager {
                             content: [
                                 {
                                     type: "text",
-                                    text: `Todoodle marked as completed: ${todoodle.text}`
+                                    text: `Completed todoodle: ${todoodle.text} (completed in ${todoodle.timeToComplete ? Math.round(todoodle.timeToComplete / 1000) + ' seconds' : 'unknown time'})`
+                                }
+                            ]
+                        };
+                    } else {
+                        return {
+                            content: [{ type: "text", text: "Error: Todoodle not found" }],
+                            isError: true
+                        };
+                    }
+                }
+
+                case "update_todoodle": {
+                    const { id, text, category, priority, dueDate } = request.params.arguments;
+
+                    if (!id) {
+                        return {
+                            content: [{ type: "text", text: "Error: id is required" }],
+                            isError: true
+                        };
+                    }
+
+                    if (priority && !['low', 'medium', 'high', 'urgent'].includes(priority)) {
+                        return {
+                            content: [{ type: "text", text: "Error: Invalid priority" }],
+                            isError: true
+                        };
+                    }
+
+                    // Validate due date format if provided
+                    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+                        return {
+                            content: [{ type: "text", text: "Error: Invalid date format. Use YYYY-MM-DD" }],
+                            isError: true
+                        };
+                    }
+
+                    const updates: any = {};
+                    if (text !== undefined) updates.text = text;
+                    if (category !== undefined) updates.category = category;
+                    if (priority !== undefined) updates.priority = priority;
+                    if (dueDate !== undefined) updates.dueDate = dueDate;
+
+                    const result = await this.updateTodo(id, updates, userId);
+                    if (result.success && result.updatedTodo) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Updated todoodle: ${result.updatedTodo.text} (ID: ${result.updatedTodo.id})`
                                 }
                             ]
                         };
@@ -815,6 +864,48 @@ export class UserAwareTodoodlesManager {
         });
     }
 
+    async updateTodo(id: string, updates: Partial<Pick<TodoodleItem, 'text' | 'category' | 'priority' | 'dueDate'>>, userId?: string): Promise<{ success: boolean; updatedTodo?: TodoodleItem }> {
+        const effectiveUserId = userId || this.getUserId();
+        log('INFO', `Updating todo ${id} for user: ${effectiveUserId}`, { updates });
+
+        return await this.withLock(effectiveUserId, async () => {
+            const data = await this.getTodoData(effectiveUserId);
+            const todoIndex = data.items.findIndex(item => item.id === id);
+
+            if (todoIndex === -1) {
+                log('WARN', `Todo ${id} not found for update for user ${effectiveUserId}`);
+                return { success: false };
+            }
+
+            const originalTodo = data.items[todoIndex];
+
+            // Update the todo with new values, keeping the original structure
+            const updatedTodo: TodoodleItem = {
+                ...originalTodo,
+                ...updates,
+                id: originalTodo.id, // Preserve the original ID
+                createdAt: originalTodo.createdAt, // Preserve creation time
+                completed: originalTodo.completed, // Preserve completion status
+                completedAt: originalTodo.completedAt, // Preserve completion time
+                timeToComplete: originalTodo.timeToComplete // Preserve time tracking
+            };
+
+            // Replace the todo in the array
+            data.items[todoIndex] = updatedTodo;
+
+            // Update metadata
+            data.metadata.updatedAt = new Date().toISOString();
+
+            await this.saveTodoData(data, effectiveUserId);
+            log('DEBUG', `Updated todo ${id} for user ${effectiveUserId}`, {
+                originalText: originalTodo.text,
+                newText: updatedTodo.text
+            });
+
+            return { success: true, updatedTodo };
+        });
+    }
+
     async getCategories(userId?: string): Promise<string[]> {
         const todos = await this.getTodos(userId);
         const categories = new Set<string>();
@@ -951,6 +1042,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         id: {
                             type: "string",
                             description: "The ID of the todoodle to complete"
+                        }
+                    },
+                    required: ["id"]
+                }
+            },
+            {
+                name: "update_todoodle",
+                description: "Update a todoodle's text, category, priority, or due date",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        id: {
+                            type: "string",
+                            description: "The ID of the todoodle to update"
+                        },
+                        text: {
+                            type: "string",
+                            description: "New text for the todoodle"
+                        },
+                        category: {
+                            type: "string",
+                            description: "New category for the todoodle"
+                        },
+                        priority: {
+                            type: "string",
+                            enum: ["low", "medium", "high", "urgent"],
+                            description: "New priority level"
+                        },
+                        dueDate: {
+                            type: "string",
+                            description: "New due date in ISO format"
                         }
                     },
                     required: ["id"]
@@ -1106,7 +1228,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         content: [
                             {
                                 type: "text",
-                                text: `Completed todoodle: ${todoodle.text}`
+                                text: `Completed todoodle: ${todoodle.text} (completed in ${todoodle.timeToComplete ? Math.round(todoodle.timeToComplete / 1000) + ' seconds' : 'unknown time'})`
                             }
                         ]
                     };
@@ -1118,6 +1240,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                                 text: `Todoodle with ID ${id} not found`
                             }
                         ]
+                    };
+                }
+            }
+
+            case "update_todoodle": {
+                const { id, text, category, priority, dueDate } = request.params.arguments as any;
+                const result = await todoodlesManager.updateTodo(id, { text, category, priority, dueDate }, userId);
+                if (result.success && result.updatedTodo) {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Updated todoodle: ${result.updatedTodo.text} (ID: ${result.updatedTodo.id})`
+                            }
+                        ]
+                    };
+                } else {
+                    return {
+                        content: [{ type: "text", text: "Error: Todoodle not found" }],
+                        isError: true
                     };
                 }
             }

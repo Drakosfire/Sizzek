@@ -35,7 +35,9 @@ export class TodoodlesWebUIManager {
             sessionTimeout: 30 * 60 * 1000, // 30 minutes
             pollInterval: 2000, // 2 seconds
             enableLogging: this.enableLogging,
-            baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost'
+            baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost',
+            // Explicit CSS path for todoodles
+            cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static'
         });
 
         this.log('INFO', 'TodoodlesWebUIManager initialized');
@@ -130,6 +132,7 @@ export class TodoodlesWebUIManager {
                 id: "todoodles-list",
                 title: "Your Todoodles",
                 config: {
+                    showItemCount: true,
                     fields: [
                         { key: "id", label: "ID", type: "text" },
                         { key: "text", label: "Task", type: "text" },
@@ -160,10 +163,10 @@ export class TodoodlesWebUIManager {
             }],
             actions: [
                 {
-                    id: "toggle",
-                    label: "Toggle Complete",
-                    type: "inline",
-                    handler: "toggle"
+                    id: "add",
+                    label: "Add Todo",
+                    type: "button",
+                    handler: "add"
                 },
                 {
                     id: "delete",
@@ -224,20 +227,22 @@ export class TodoodlesWebUIManager {
             this.log('DEBUG', `Handling UI update: ${action} for user: ${userId}`, { data });
 
             switch (action) {
-                case 'toggle':
-                    const { id, completed } = data;
-                    if (completed) {
-                        // Complete the todo
-                        const result = await this.todoodlesManager.completeTodo(id, userId);
-                        if (!result) {
-                            throw new Error(`Todo with ID ${id} not found`);
-                        }
-                        this.log('INFO', `Completed todo ${id} for user ${userId}`);
-                        return result;
-                    } else {
-                        // TODO: Implement uncomplete functionality if needed
-                        throw new Error('Uncompleting todoodles not yet supported');
+                case 'update':
+                    const { id: updateId, text, category, priority, dueDate } = data;
+                    const updates: any = {};
+
+                    // Only include fields that are provided
+                    if (text !== undefined) updates.text = text;
+                    if (category !== undefined) updates.category = category;
+                    if (priority !== undefined) updates.priority = priority;
+                    if (dueDate !== undefined) updates.dueDate = dueDate;
+
+                    const updateResult = await this.todoodlesManager.updateTodo(updateId, updates, userId);
+                    if (!updateResult.success) {
+                        throw new Error(`Todo with ID ${updateId} not found`);
                     }
+                    this.log('INFO', `Updated todo ${updateId} for user ${userId}`, { updates });
+                    return updateResult.updatedTodo;
 
                 case 'delete':
                     const deleteResult = await this.todoodlesManager.deleteTodo(data.id, userId);
@@ -248,15 +253,52 @@ export class TodoodlesWebUIManager {
                     return deleteResult;
 
                 case 'add':
-                    const addedTodo = await this.todoodlesManager.addTodo(
-                        data.text,
-                        data.category,
-                        data.priority,
-                        data.dueDate,
-                        userId
-                    );
-                    this.log('INFO', `Added new todo for user ${userId}: "${data.text}"`);
-                    return addedTodo;
+                    this.log('DEBUG', `Processing add action for user ${userId}`, {
+                        data,
+                        dataKeys: Object.keys(data || {}),
+                        text: data?.text,
+                        category: data?.category,
+                        priority: data?.priority,
+                        dueDate: data?.dueDate
+                    });
+
+                    // Validate required fields
+                    if (!data || !data.text || typeof data.text !== 'string') {
+                        throw new Error('Text is required and must be a string');
+                    }
+
+                    // Validate priority if provided
+                    if (data.priority && !['low', 'medium', 'high', 'urgent'].includes(data.priority)) {
+                        throw new Error(`Invalid priority: ${data.priority}. Must be one of: low, medium, high, urgent`);
+                    }
+
+                    // Validate date format if provided
+                    if (data.dueDate && data.dueDate.trim() !== '') {
+                        try {
+                            new Date(data.dueDate);
+                        } catch (error) {
+                            throw new Error(`Invalid due date format: ${data.dueDate}`);
+                        }
+                    }
+
+                    try {
+                        const addedTodo = await this.todoodlesManager.addTodo(
+                            data.text.trim(),
+                            data.category?.trim() || undefined,
+                            data.priority || 'medium',
+                            data.dueDate?.trim() || undefined,
+                            userId
+                        );
+                        this.log('INFO', `Added new todo for user ${userId}: "${data.text}"`);
+                        return addedTodo;
+                    } catch (addError: any) {
+                        this.log('ERROR', `addTodo method failed for user ${userId}:`, {
+                            error: addError.message,
+                            stack: addError.stack,
+                            data
+                        });
+                        throw addError;
+                    }
 
                 default:
                     throw new Error(`Unknown UI action: ${action}`);

@@ -23,8 +23,8 @@
   "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",
-    "@sizzek/mcp-data": "file:../../mcp-data",
-    "@sizzek/mcp-web-ui": "file:../../mcp-web-ui",
+    "mcp-data": "mcp-data",
+    "mcp-web-ui": "file:media/drakosfire/Projects/mcp-web-ui-standalone",
     "dotenv": "^16.5.0"
   },
   "devDependencies": {

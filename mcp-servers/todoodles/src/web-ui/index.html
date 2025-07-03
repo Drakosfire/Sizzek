@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todoodles - MCP Web UI</title>
+    <link rel="stylesheet" href="../../../../../mcp-web-ui-standalone/templates/static/styles.css">
+    <link rel="stylesheet" href="todoodles-styles.css">
+</head>
+
+<body>
+    <div id="todo-app">
+        <div id="todo-list"></div>
+    </div>
+
+    <!-- Load MCP Web UI Framework components FIRST -->
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/core/BaseComponent.js"></script>
+    <!-- Load ModalComponent.js to provide MCPModal globally -->
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/components/ModalComponent.js"></script>
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/components/ListComponent.js"></script>
+
+    <!-- Load server-specific components AFTER framework -->
+    <script src="TodoListComponent.js"></script>
+
+    <script>
+        // Example usage
+        document.addEventListener('DOMContentLoaded', function () {
+            // Sample todo data
+            const todoData = [
+                {
+                    id: '1',
+                    text: 'Complete project refactoring',
+                    priority: 'high',
+                    category: 'work',
+                    dueDate: '2024-01-15',
+                    completed: false
+                },
+                {
+                    id: '2',
+                    text: 'Buy groceries',
+                    priority: 'medium',
+                    category: 'personal',
+                    completed: true
+                },
+                {
+                    id: '3',
+                    text: 'Write documentation',
+                    priority: 'urgent',
+                    category: 'work',
+                    dueDate: '2024-01-10',
+                    completed: false
+                }
+            ];
+
+            // Initialize todo list with advanced features
+            const todoListElement = document.getElementById('todo-list');
+            const todoList = createTodoListComponent(todoListElement, todoData, {
+                list: {
+                    enableSearch: true,
+                    enableFilters: true,
+                    enableBulkActions: true,
+                    enableSorting: true
+                },
+                todo: {
+                    enableUndo: true,
+                    undoTimeout: 5000
+                }
+            });
+
+            console.log('Todo list component initialized with undo system');
+        });
+    </script>
+</body>
+
+</html>
