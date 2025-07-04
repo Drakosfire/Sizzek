@@ -334,7 +334,11 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
         }
     }
 
-    contentsWithPhoneNumber = `[${processedMedia && processedMedia.length > 0 ? 'MMS' : 'SMS'} from ${contactName} (${phoneNumber})]`;
+    // Create header for identification but keep the actual message content separate
+    const messageHeader = `[${processedMedia && processedMedia.length > 0 ? 'MMS' : 'SMS'} from ${contactName} (${phoneNumber})]`;
+
+    // Combine header with actual message content
+    const finalContent = `${messageHeader}\n${formattedMessage}`;
 
     // Get conversation title from contact manager
     const conversationTitle = contactManager.getConversationTitle(phoneNumber);
@@ -366,7 +370,7 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
 
     const payload = {
         role: "external",
-        content: contentsWithPhoneNumber,
+        content: finalContent,
         from: from,
         attachments: attachments, // Use attachments instead of media for LibreChat
         metadata: {
