@@ -46,6 +46,7 @@ function createTodoListComponent(element, data, config = {}) {
             enableFilters: true,
             enableSorting: true,
             enableBulkActions: true,
+            enableToggle: false,
 
             // Actions configuration
             actions: {

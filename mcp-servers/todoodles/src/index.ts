@@ -455,8 +455,7 @@ export class UserAwareTodoodlesManager {
                 }
 
                 case "get_web_ui": {
-                    log('INFO', `[TODOODLES-WEB-UI-SERVER] get_web_ui called with extracted userId: "${userId}"`);
-                    log('INFO', `[TODOODLES-WEB-UI-SERVER] Passing userId to web UI: "${userId || 'default'}"`);
+
                     return await webUIManager.handleGetWebUI(userId || 'default');
                 }
 
@@ -1183,7 +1182,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_web_ui",
-                description: "Get a web interface for managing todoodles",
+                description: "Get a web interface for managing todoodles, then return the link in markdown format",
                 inputSchema: {
                     type: "object",
                     properties: {
