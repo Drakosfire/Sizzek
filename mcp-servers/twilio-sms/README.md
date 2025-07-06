@@ -8,6 +8,11 @@ A Model Context Protocol (MCP) server for sending SMS messages using Twilio. Thi
 - E.164 phone number format validation
 - Detailed error handling and logging
 - Integration with LibreChat
+- **Contact lookup and management**:
+  - Search local contacts by name, phone number, or metadata
+  - Search LibreChat users by name, username, email, or phone number
+  - Configurable storage (JSON file or MongoDB)
+  - Unified contact information from multiple sources
 
 ## Prerequisites
 
@@ -16,6 +21,9 @@ A Model Context Protocol (MCP) server for sending SMS messages using Twilio. Thi
   - Account SID
   - Auth Token
   - A Twilio phone number for sending messages
+- **Optional for contact lookup**:
+  - MongoDB (if using MongoDB storage for contact lookup)
+  - LibreChat instance (for user lookup integration)
 
 ## Installation
 
@@ -29,6 +37,12 @@ cd twilio-sms
 ```bash
 npm install
 ```
+
+   The installation includes:
+   - **Twilio SDK**: For SMS messaging functionality
+   - **MongoDB Driver**: For LibreChat user lookup (when MongoDB storage is enabled)
+   - **Express**: For potential webhook endpoints
+   - **TypeScript**: For development
 
 3. Build the project:
 ```bash
@@ -69,6 +83,74 @@ You can find these credentials in your Twilio Console:
    - Make sure to include the complete Account SID, including any trailing characters
    - The Account SID typically starts with 'AC'
 
+### Contact Lookup Configuration
+
+The contact lookup functionality supports two storage modes: JSON file storage and MongoDB integration.
+
+#### Storage Configuration
+
+Add these environment variables to your LibreChat `.env` file:
+
+```env
+# ===== STORAGE CONFIGURATION =====
+# Storage type: 'json' or 'mongodb'
+MCP_STORAGE_TYPE=mongodb
+
+# ===== JSON FILE STORAGE (when MCP_STORAGE_TYPE=json) =====
+# Path to contacts file (relative or absolute)
+TODOS_FILE_PATH=./memory_files/contacts.json
+
+# ===== MONGODB STORAGE (when MCP_STORAGE_TYPE=mongodb) =====
+# MongoDB connection string
+MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+
+# MongoDB database name (default: LibreChat)
+MONGODB_CONTACT_DATABASE=LibreChat
+
+# MongoDB collection name for users data
+MONGODB_COLLECTION=users
+
+# Optional: MongoDB timeout and retry settings
+MCP_MONGODB_TIMEOUT=10000
+MCP_MONGODB_RETRIES=3
+
+# ===== LIBRECHAT INTEGRATION =====
+# Agent configuration for LibreChat integration
+LIBRECHAT_AGENT_ID=agent_G5HmZ0jJtfPMXIykL81Nx
+LIBRECHAT_AGENT_MODEL=gpt-4.1
+
+# Optional: Custom data directory for local contacts
+CONTACTS_DATA_DIR=./data
+```
+
+#### Storage Options
+
+1. **JSON File Storage** (`MCP_STORAGE_TYPE=json`):
+   - Uses local JSON files for contact storage
+   - Suitable for smaller contact lists
+   - No external dependencies
+   - Contact data stored in `TODOS_FILE_PATH`
+
+2. **MongoDB Storage** (`MCP_STORAGE_TYPE=mongodb`):
+   - Integrates with LibreChat's MongoDB database
+   - Can search both local contacts and LibreChat users
+   - Suitable for larger contact lists
+   - Requires MongoDB connection
+
+#### Contact Data Sources
+
+When MongoDB storage is enabled, the system searches:
+
+1. **Local Contacts**: Contacts managed through the `manage_contact` tool
+2. **LibreChat Users**: Users in the LibreChat database with phone numbers
+
+Search capabilities include:
+- Name and username matching
+- Phone number lookup (exact and partial)
+- Email address search
+- Metadata and notes search
+- Tag-based filtering
+
 ## Usage
 
 1. Start the server:
@@ -76,7 +158,63 @@ You can find these credentials in your Twilio Console:
 npm start
 ```
 
-2. The server will be available to LibreChat for sending SMS messages.
+2. The server will be available to LibreChat for sending SMS messages and contact lookup.
+
+### Available Tools
+
+The server provides the following MCP tools:
+
+#### 1. `send_sms`
+Send SMS messages to any phone number.
+
+**Parameters:**
+- `to` (string): Phone number in E.164 format (e.g., +1234567890)
+- `message` (string): Message content to send
+
+**Example usage in LibreChat:**
+```
+Send an SMS to +1234567890 saying "Hello from LibreChat!"
+```
+
+#### 2. `manage_contact`
+Add or update contact information for a phone number.
+
+**Parameters:**
+- `phoneNumber` (string): Phone number in E.164 format
+- `name` (string, optional): Contact name
+- `notes` (string, optional): Additional notes
+- `tags` (array, optional): Tags to associate with the contact
+
+**Example usage in LibreChat:**
+```
+Add a contact for +1234567890 with name "John Smith" and note "Client contact"
+```
+
+#### 3. `lookup_contacts`
+Search for contacts by name, phone number, email, or other criteria.
+
+**Parameters:**
+- `query` (string): Search query (name, phone number, email, etc.)
+- `searchType` (string, optional): Type of search - 'all', 'phoneNumber', or 'name' (default: 'all')
+
+**Example usage in LibreChat:**
+```
+Look up contacts named "John"
+Find contact with phone number +1234567890
+Search for contacts with "client" in their information
+```
+
+**Search capabilities:**
+- **Local contacts**: Searches names, phone numbers, notes, and tags
+- **LibreChat users**: Searches names, usernames, emails, and phone numbers
+- **Combined results**: Shows contacts from both sources with clear source identification
+
+**Response format:**
+- Contact name and phone number
+- Email address (for LibreChat users)
+- Source identification (Local Contact vs LibreChat User)
+- Last interaction date
+- Notes and tags (if available)
 
 ## Error Handling
 
@@ -101,6 +239,12 @@ The server includes detailed logging to help diagnose issues:
 2. Keep your Auth Token secure and rotate it if compromised
 3. Use environment variables for all sensitive information
 4. Consider using Twilio's test credentials for development
+5. **Contact data security**:
+   - Protect MongoDB connection strings and credentials
+   - Consider encryption for sensitive contact information
+   - Implement proper access controls for contact data
+   - Be mindful of privacy regulations when storing contact information
+   - Regularly review and clean up stored contact data
 
 ## Troubleshooting
 
@@ -120,6 +264,24 @@ Common issues and solutions:
    - Verify variables are set in LibreChat's `.env` file
    - Check for any typos in variable names
    - Ensure the server has been restarted after updating variables
+
+4. **Contact lookup not working**
+   - Check `MCP_STORAGE_TYPE` configuration
+   - For MongoDB: Verify `MONGODB_CONNECTION_STRING` is correct
+   - For JSON: Ensure `TODOS_FILE_PATH` directory exists and is writable
+   - Check MongoDB connection and collection name settings
+
+5. **MongoDB connection issues**
+   - Verify MongoDB is running and accessible
+   - Check connection string format
+   - Ensure database and collection names are correct
+   - Check MongoDB authentication if required
+
+6. **No contacts found in searches**
+   - Verify users have phone numbers in their profiles
+   - Check that `MONGODB_COLLECTION` points to the correct collection
+   - Ensure local contacts have been added using `manage_contact`
+   - Try different search terms or use exact phone numbers
 
 ## Contributing
 

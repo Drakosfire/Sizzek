@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { fork } from 'child_process';
+import { ContactManager, ContactLookupService } from './contacts.js';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,21 @@ if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
 console.error('Initializing Twilio client...');
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 console.error('Twilio client initialized successfully');
+
+// Initialize Contact Manager and Lookup Service
+console.error('Initializing contact management...');
+const contactManager = new ContactManager();
+const contactLookupService = new ContactLookupService(contactManager);
+
+// Initialize the contact lookup service
+(async () => {
+    try {
+        await contactLookupService.initialize();
+        console.error('Contact lookup service initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize contact lookup service:', error);
+    }
+})();
 
 // Create the MCP server
 const server = new Server({
@@ -138,6 +154,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         }
                     },
                     required: ["phoneNumber"],
+                },
+            },
+            {
+                name: "lookup_contacts",
+                description: "Search for contacts by name, phone number, email, or other criteria. This searches both local contacts and LibreChat users (if MongoDB is configured).",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        query: {
+                            type: "string",
+                            description: "Search query (name, phone number, email, etc.)"
+                        },
+                        searchType: {
+                            type: "string",
+                            enum: ["all", "phoneNumber", "name"],
+                            description: "Type of search to perform (default: 'all')"
+                        }
+                    },
+                    required: ["query"],
                 },
             }
         ],
@@ -297,6 +332,56 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             } catch (error) {
                 console.error('Error managing contact:', error);
                 throw new Error(`Failed to manage contact: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+        case "lookup_contacts":
+            try {
+                const query = args.query as string;
+                const searchType = (args.searchType as string) || 'all';
+
+                let results;
+
+                if (searchType === 'phoneNumber') {
+                    // Lookup specific phone number
+                    const result = await contactLookupService.lookupContactByPhoneNumber(query);
+                    results = result ? [result] : [];
+                } else {
+                    // General search
+                    results = await contactLookupService.lookupContacts(query);
+                }
+
+                if (results.length === 0) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: `No contacts found matching "${query}"`
+                        }]
+                    };
+                }
+
+                // Format results for display
+                const formattedResults = results.map(contact => {
+                    const parts = [
+                        `📱 **${contact.name || 'Unknown'}**`,
+                        `📞 ${contact.phoneNumber || 'No phone number'}`,
+                        contact.email ? `📧 ${contact.email}` : null,
+                        `📍 Source: ${contact.source === 'local' ? 'Local Contact' : 'LibreChat User'}`,
+                        contact.lastInteraction ? `🕒 Last interaction: ${new Date(contact.lastInteraction).toLocaleDateString()}` : null,
+                        contact.metadata?.notes ? `📝 Notes: ${contact.metadata.notes}` : null,
+                        contact.metadata?.tags ? `🏷️ Tags: ${contact.metadata.tags.join(', ')}` : null
+                    ].filter(Boolean).join('\n');
+
+                    return parts;
+                }).join('\n\n---\n\n');
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Found ${results.length} contact(s) matching "${query}":\n\n${formattedResults}`
+                    }]
+                };
+            } catch (error) {
+                console.error('Error looking up contacts:', error);
+                throw new Error(`Failed to lookup contacts: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
         default:
             throw new Error(`Unknown tool: ${name}`);
