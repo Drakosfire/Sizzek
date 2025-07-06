@@ -1,51 +1,99 @@
 import { Task } from '../types/index.js';
+import { UserLookupService } from './user-lookup.js';
 
 export interface LibreChatConfig {
     endpoint: string;
     apiKey: string;
-    conversationId: string | undefined;
     timeout: number;
     retryAttempts: number;
     retryDelay: number;
+    userLookupService?: UserLookupService;
+    agentName?: string;
 }
 
 export interface TriggerRequest {
     message: string;
     description: string;
-    conversationId: string | undefined;
     metadata: Record<string, any> | undefined;
 }
 
 export class LibreChatClient {
     private config: LibreChatConfig;
+    private cachedUser: any = null; // Cache the full user object
 
     constructor(config: LibreChatConfig) {
         this.config = config;
     }
 
     async triggerTask(task: Task): Promise<void> {
+        // Get the full user object (includes phone number)
+        const user = await this.getUser();
+
+        if (!user) {
+            throw new Error('Unable to find agent user. Please check agent configuration.');
+        }
+
+        if (!user.phoneNumber) {
+            throw new Error(`Agent user ${user._id} does not have a phone number. Cannot send scheduled message.`);
+        }
+
         const request: TriggerRequest = {
             message: task.message,
             description: task.description || task.name,
-            conversationId: this.config.conversationId,
             metadata: {
                 source: 'scheduled',
                 taskId: task.id,
                 taskName: task.name,
                 schedule: task.schedule,
-                triggeredAt: new Date().toISOString()
+                triggeredAt: new Date().toISOString(),
+                userId: user._id.toString(),
+                agentName: this.config.agentName,
+                // Agent-specific metadata for proper routing
+                endpoint: 'agents',
+                agent_id: process.env.LIBRECHAT_AGENT_ID || 'default',
+                model: process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4o'
             }
         };
 
-        await this.sendWithRetry(() => this.sendTriggerRequest(request));
+        await this.sendWithRetry(() => this.sendTriggerRequest(request, user.phoneNumber));
     }
 
-    private async sendTriggerRequest(request: TriggerRequest): Promise<void> {
-        if (!request.conversationId) {
-            throw new Error('conversationId is required for LibreChat integration');
+    private async getUser(): Promise<any> {
+        // Return cached user if available
+        if (this.cachedUser) {
+            return this.cachedUser;
         }
 
-        const url = `${this.config.endpoint}/api/messages/${request.conversationId}`;
+        // Try to get user from user lookup service
+        if (this.config.userLookupService && this.config.agentName) {
+            try {
+                const userId = await this.config.userLookupService.lookupUserIdByAgentName(this.config.agentName);
+                if (userId) {
+                    // Get the full user object (includes phone number)
+                    const user = await this.config.userLookupService.lookupUserById(userId);
+                    if (user) {
+                        this.cachedUser = user;
+                        console.log(`✅ Found agent user "${this.config.agentName}":`, {
+                            userId: user._id.toString(),
+                            hasPhoneNumber: !!user.phoneNumber,
+                            phoneNumber: user.phoneNumber ? '[PRESENT]' : '[MISSING]'
+                        });
+                        return user;
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ Error looking up agent user "${this.config.agentName}":`, error);
+            }
+        }
+
+        // Fallback: warn and return null
+        console.warn(`⚠️  No user found for agent "${this.config.agentName}". Tasks will not be delivered.`);
+        return null;
+    }
+
+    private async sendTriggerRequest(request: TriggerRequest, phoneNumber: string): Promise<void> {
+        // Use SMS conversation endpoint - treat like regular SMS message
+        const url = `${this.config.endpoint}/api/messages/sms-conversation`;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
@@ -54,39 +102,48 @@ export class LibreChatClient {
         }, this.config.timeout);
 
         try {
-            console.error('Sending scheduled task trigger to LibreChat:', {
+            console.log('Sending scheduled task as SMS message:', {
                 url,
                 taskName: request.metadata?.taskName,
                 message: request.message.substring(0, 100) + '...',
-                timeout: this.config.timeout
+                timeout: this.config.timeout,
+                phoneNumber: phoneNumber,
+                agentName: this.config.agentName
             });
 
             // Format message with scheduled task context
             const taskName = request.metadata?.taskName || 'Scheduled Task';
             const contentWithContext = `[Scheduled Task: ${taskName}]: ${request.description} \n\n ${request.message}`;
 
-            // Prepare payload that matches the working SMS implementation format
+            // Prepare payload as regular SMS message
+            // This will flow through normal SMS validation and conversation discovery
             const payload = {
                 role: "external",
                 content: contentWithContext,
-                from: "scheduled-task",
-                conversationId: request.conversationId,
+                from: phoneNumber, // Use agent's actual phone number
                 metadata: {
+                    phoneNumber: phoneNumber, // Also include in metadata
+                    // Agent-specific metadata for proper routing
                     endpoint: "agents",
                     agent_id: process.env.LIBRECHAT_AGENT_ID || "default",
                     model: process.env.LIBRECHAT_AGENT_MODEL || "gpt-4o",
+                    // Scheduled task metadata
                     source: 'scheduled',
                     taskName: taskName,
                     title: `Scheduled Task: ${taskName}`,
                     taskId: request.metadata?.taskId,
                     schedule: request.metadata?.schedule,
                     triggeredAt: request.metadata?.triggeredAt,
+                    agentName: this.config.agentName,
+                    // Instructions for the agent
                     additional_instructions: `SCHEDULED TASK CONTEXT: This is a scheduled reminder/message that was set up previously. You should respond appropriately to the task content.`,
+                    // Conversation metadata for new conversation creation
                     conversationMetadata: {
                         title: `Scheduled Task: ${taskName}`,
                         endpoint: "agents",
                         agent_id: process.env.LIBRECHAT_AGENT_ID || "default",
-                        model: process.env.LIBRECHAT_AGENT_MODEL || "gpt-4o"
+                        model: process.env.LIBRECHAT_AGENT_MODEL || "gpt-4o",
+                        source: 'scheduled'
                     }
                 }
             };
@@ -109,66 +166,34 @@ export class LibreChatClient {
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
-            console.error('Successfully sent scheduled task trigger to LibreChat');
+            console.log('✅ Successfully sent scheduled task as SMS message');
         } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw new Error(`Request timeout after ${this.config.timeout}ms: ${error.message}`);
-            }
+            console.error('❌ Error sending scheduled task:', error);
             throw error;
         } finally {
             clearTimeout(timeoutId);
         }
     }
 
-    private async sendWithRetry<T>(operation: () => Promise<T>): Promise<T> {
-        let lastError: Error;
+    private async sendWithRetry(operation: () => Promise<void>): Promise<void> {
+        let lastError: Error | null = null;
 
         for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
             try {
-                return await operation();
+                await operation();
+                return; // Success
             } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
+                lastError = error as Error;
+                console.warn(`Attempt ${attempt}/${this.config.retryAttempts} failed:`, error);
 
-                if (attempt === this.config.retryAttempts) {
-                    throw lastError;
+                if (attempt < this.config.retryAttempts) {
+                    const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
+                    console.log(`Retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
-
-                if (!this.isRetryableError(lastError)) {
-                    throw lastError;
-                }
-
-                const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
-                console.error(`Attempt ${attempt}/${this.config.retryAttempts} failed, retrying in ${delay}ms:`, lastError.message);
-
-                if (lastError.name === 'AbortError' || lastError.message.includes('timeout')) {
-                    console.error('Timeout detected - consider increasing HTTP_TIMEOUT environment variable');
-                }
-
-                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
 
-        throw lastError!;
-    }
-
-    private isRetryableError(error: Error): boolean {
-        // Network errors are retryable
-        if (error.message.includes('fetch failed') ||
-            error.message.includes('ECONNREFUSED') ||
-            error.message.includes('ETIMEDOUT')) {
-            return true;
-        }
-
-        // HTTP 5xx errors are retryable
-        if (error.message.includes('HTTP 5')) {
-            return true;
-        }
-
-        // Timeout errors are retryable
-        if (error.name === 'AbortError') {
-            return true;
-        }
-
-        return false;
+        throw lastError;
     }
 } 

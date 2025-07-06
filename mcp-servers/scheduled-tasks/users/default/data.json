@@ -1,0 +1,17 @@
+{
+  "userId": "default",
+  "data": {
+    "tasks": [],
+    "metadata": {
+      "version": "2.0.0",
+      "lastBackup": "2025-06-30T23:24:20.339Z",
+      "totalTasks": 0,
+      "lastModified": "2025-06-30T23:24:20.339Z",
+      "storageType": "json"
+    }
+  },
+  "updatedAt": "2025-06-30T23:24:20.339Z",
+  "createdAt": "2025-06-30T23:24:20.339Z",
+  "version": "1.0.0",
+  "dataType": "json-storage"
+}

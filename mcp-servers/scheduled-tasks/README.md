@@ -1,6 +1,214 @@
 # Scheduled Tasks MCP Server
 
-A TypeScript MCP (Model Context Protocol) server that enables AI agents to create, manage, and execute scheduled tasks through conversational interaction. Perfect for scheduling reminders, periodic notifications, and automated actions via LibreChat.
+A Model Context Protocol (MCP) server that provides scheduled task management capabilities with LibreChat integration and dynamic user lookup.
+
+## Features
+
+- ✅ **Multiple Schedule Types**: Once, scheduled, daily, weekly, monthly, and interval tasks
+- ✅ **LibreChat Integration**: Automatically triggers LibreChat agents when tasks execute
+- ✅ **Dynamic User Lookup**: Automatically finds the correct user by agent name - no hardcoded IDs needed
+- ✅ **Flexible Conversation Management**: Automatically discovers existing conversations or creates new ones
+- ✅ **Persistent Storage**: MongoDB with user-based isolation
+- ✅ **Web UI**: Built-in web interface for task management
+- ✅ **Robust Error Handling**: Comprehensive retry logic and error reporting
+
+## Quick Start
+
+### 1. Environment Setup
+
+```bash
+# Copy the environment template
+cp env.example .env
+
+# Edit your configuration
+nano .env
+```
+
+### 2. Essential Configuration
+
+```bash
+# LibreChat Integration
+LIBRECHAT_ENDPOINT=http://localhost:3080
+LIBRECHAT_API_KEY=your-librechat-api-key-here
+
+# Agent Configuration (Required for dynamic user lookup)
+LIBRECHAT_AGENT_NAME=sizzek
+LIBRECHAT_AGENT_ID=default
+LIBRECHAT_AGENT_MODEL=gpt-4o
+
+# MongoDB Connection (Required for user lookup)
+MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGODB_DATABASE=LibreChat
+```
+
+### 3. How It Works
+
+When a scheduled task executes:
+
+1. **Dynamic User Discovery**: The system queries MongoDB to find the user ID for your agent name
+2. **Smart Conversation Handling**: Automatically searches for existing conversations or creates new ones
+3. **Agent Triggering**: Routes the message through LibreChat's SMS conversation endpoint
+4. **Flexible Routing**: The External Client handles all conversation management automatically
+
+No hardcoded conversation IDs needed - the system is fully dynamic and adaptive!
+
+## Configuration Options
+
+### Core Settings
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LIBRECHAT_ENDPOINT` | Yes | LibreChat server URL |
+| `LIBRECHAT_API_KEY` | Yes | API key for LibreChat |
+| `LIBRECHAT_AGENT_NAME` | Yes | Agent name for user lookup |
+| `LIBRECHAT_AGENT_ID` | Yes | Agent ID for routing |
+| `MONGODB_CONNECTION_STRING` | Yes | MongoDB connection string |
+
+### Optional Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HTTP_TIMEOUT` | 30000 | Request timeout in milliseconds |
+| `RETRY_ATTEMPTS` | 3 | Number of retry attempts |
+| `RETRY_DELAY` | 1000 | Base delay between retries |
+| `MCP_MONGODB_TIMEOUT` | 10000 | MongoDB connection timeout |
+| `MCP_MONGODB_RETRIES` | 3 | MongoDB retry attempts |
+
+### Legacy Configuration (Deprecated)
+
+The old hardcoded conversation ID approach is deprecated but still supported:
+
+```bash
+# Legacy - use dynamic discovery instead
+LIBRECHAT_CONVERSATION_ID=your-hardcoded-conversation-id
+```
+
+## Usage Examples
+
+### Create a Daily Reminder
+
+```javascript
+// Create a daily reminder at 9 AM
+await server.createDailyTask({
+  name: "Daily Standup Reminder",
+  time: "09:00",
+  message: "Time for the daily standup! Please share your updates.",
+  description: "Automated daily standup reminder"
+});
+```
+
+### Create a One-Time Task
+
+```javascript
+// Create a task that runs once after 30 minutes
+await server.createOnceTask({
+  name: "Follow-up Reminder",
+  delayMinutes: 30,
+  message: "Don't forget to follow up on that important email!",
+  description: "Follow-up reminder"
+});
+```
+
+### Create a Weekly Report
+
+```javascript
+// Create a weekly report every Friday at 5 PM
+await server.createWeeklyTask({
+  name: "Weekly Report",
+  dayOfWeek: 5, // Friday
+  time: "17:00",
+  message: "Please prepare and share your weekly report.",
+  description: "Weekly report generation"
+});
+```
+
+## Architecture
+
+### Dynamic User Lookup
+
+The system uses MongoDB to dynamically find users by agent name:
+
+1. **Agent Name Resolution**: Looks up user by agent name in metadata
+2. **Fallback Strategies**: Falls back to name/username matching
+3. **Phone Number Matching**: Supports SMS-based agent patterns
+4. **Caching**: Caches user IDs for performance
+
+### Conversation Management
+
+The External Client handles all conversation logic:
+
+1. **Conversation Discovery**: Searches for existing conversations by user and metadata
+2. **Smart Creation**: Creates new conversations when none exist
+3. **Metadata Preservation**: Maintains conversation context and source information
+4. **Agent Routing**: Properly routes to agent endpoints with correct parameters
+
+### Message Flow
+
+```
+Scheduled Task → User Lookup → SMS Conversation Route → External Client → Agent Processing
+```
+
+## Web UI
+
+Access the web interface at `http://localhost:3000` (when running locally) to:
+
+- View all scheduled tasks
+- Create new tasks with a friendly interface
+- Edit existing tasks
+- Monitor task execution status
+- View task execution history
+
+## Error Handling
+
+The system includes comprehensive error handling:
+
+- **User Lookup Failures**: Graceful fallbacks and detailed error messages
+- **Network Issues**: Automatic retries with exponential backoff
+- **MongoDB Errors**: Connection retry logic and timeout handling
+- **Agent Routing**: Proper error propagation and debugging information
+
+## Migration from Hardcoded IDs
+
+If you're migrating from hardcoded conversation IDs:
+
+1. Set up the required MongoDB connection
+2. Configure your agent name
+3. Remove the old `LIBRECHAT_CONVERSATION_ID` setting
+4. The system will automatically discover your conversations
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No user found for agent name**
+   - Verify your agent name matches a user in LibreChat
+   - Check MongoDB connection
+   - Ensure user exists in the database
+
+2. **Messages not appearing**
+   - Verify LibreChat API key is correct
+   - Check endpoint URL
+   - Monitor LibreChat logs for errors
+
+3. **MongoDB connection issues**
+   - Verify connection string format
+   - Check MongoDB is running
+   - Ensure database exists
+
+### Debug Mode
+
+Enable debug logging:
+
+```bash
+MCP_DEBUG=true
+LOG_LEVEL=debug
+```
+
+This provides detailed information about user lookup, conversation discovery, and message routing.
+
+## License
+
+MIT License - see LICENSE file for details.
 
 ## 🚀 Quick Start
 
@@ -42,7 +250,11 @@ mcpServers:
     env:
       LIBRECHAT_ENDPOINT: "http://localhost:3080"
       LIBRECHAT_API_KEY: "your-api-key-here"
-      LIBRECHAT_CONVERSATION_ID: "optional-default-conversation-id"
+      LIBRECHAT_AGENT_NAME: "sizzek"
+      LIBRECHAT_AGENT_ID: "default"
+      LIBRECHAT_AGENT_MODEL: "gpt-4.1"
+      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"
+      MONGODB_DATABASE: "LibreChat"
 ```
 
 ## 💬 Usage Examples
@@ -84,8 +296,16 @@ Create a `.env` file:
 LIBRECHAT_ENDPOINT=http://localhost:3080
 LIBRECHAT_API_KEY=your-api-key-here
 
+# Agent Configuration (Required for dynamic user lookup)
+LIBRECHAT_AGENT_NAME=sizzek
+LIBRECHAT_AGENT_ID=default
+LIBRECHAT_AGENT_MODEL=gpt-4.1
+
+# MongoDB Connection (Required for user lookup)
+MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGODB_DATABASE=LibreChat
+
 # Optional Configuration
-LIBRECHAT_CONVERSATION_ID=default-conversation-id
 HTTP_TIMEOUT=30000
 RETRY_ATTEMPTS=3
 RETRY_DELAY=1000
@@ -120,319 +340,4 @@ List all scheduled tasks with their status.
 ### `get_scheduled_task`
 Get details of a specific task by ID.
 
-### `enable_scheduled_task` / `disable_scheduled_task`
-Enable or disable a task without deleting it.
-
-### `delete_scheduled_task`
-Permanently delete a task.
-
-## 📅 Schedule Types
-
-### One-Time Tasks (`type: "once"`)
-Execute once after a delay from current server time.
-
-```json
-{
-  "type": "once",
-  "delayMinutes": 1.5
-}
-```
-
-- `delayMinutes`: Number (minimum 0.1 = 6 seconds)
-- Supports decimals: 0.5 = 30 seconds, 1.5 = 90 seconds
-
-### Interval Tasks (`type: "interval"`)
-Repeat every X minutes/hours/days.
-
-```json
-{
-  "type": "interval", 
-  "every": 15,
-  "unit": "minutes",
-  "startTime": "09:00"
-}
-```
-
-- `every`: Positive integer
-- `unit`: "minutes", "hours", or "days"  
-- `startTime`: Optional HH:MM format
-
-### Daily Tasks (`type: "daily"`)
-Run every day at a specific time.
-
-```json
-{
-  "type": "daily",
-  "time": "08:00",
-  "weekdaysOnly": true
-}
-```
-
-- `time`: HH:MM format (24-hour)
-- `weekdaysOnly`: Optional, runs Monday-Friday only
-
-### Weekly Tasks (`type: "weekly"`)
-Run on a specific day and time each week.
-
-```json
-{
-  "type": "weekly",
-  "dayOfWeek": "monday", 
-  "time": "09:00"
-}
-```
-
-- `dayOfWeek`: "monday", "tuesday", etc.
-- `time`: HH:MM format (24-hour)
-
-### Monthly Tasks (`type: "monthly"`)
-Run on a specific day of the month.
-
-```json
-{
-  "type": "monthly",
-  "dayOfMonth": 15,
-  "time": "10:00"  
-}
-```
-
-- `dayOfMonth`: 1-31
-- `time`: HH:MM format (24-hour)
-
-## 🔧 Development
-
-### Project Structure
-
-```
-src/
-├── index.ts                 # MCP server entry point
-├── types/
-│   └── index.ts            # TypeScript interfaces
-├── core/
-│   ├── task-manager.ts     # Task scheduling engine
-│   ├── task-store.ts       # Data persistence
-│   └── schedule-validator.ts # Schedule validation
-└── http/
-    └── librechat-client.ts # LibreChat API client
-```
-
-### Building
-
-```bash
-# Development build with watch
-npm run dev
-
-# Production build
-npm run build
-
-# Type checking
-npm run type-check
-
-# Linting
-npm run lint
-```
-
-### Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Watch mode
-npm run test:watch
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### "Cannot find module" errors
-**Cause**: Missing ES module configuration
-**Solution**: Ensure `package.json` has `"type": "module"` and all local imports use `.js` extensions
-
-#### "API key required" errors  
-**Cause**: Wrong authentication headers
-**Solution**: Verify `LIBRECHAT_API_KEY` is set and valid
-
-#### "Unknown schedule type" errors
-**Cause**: Agent using wrong schedule format
-**Solution**: Check the tool schema examples - use `"once"` for one-time tasks
-
-#### Tasks not executing
-**Cause**: LibreChat endpoint unreachable
-**Solution**: Verify `LIBRECHAT_ENDPOINT` and network connectivity
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-LOG_LEVEL=debug npm start
-```
-
-### Log Files
-
-Logs are written to:
-- Console (always)
-- `./logs/scheduled-tasks.log` (if LOG_LEVEL=debug)
-
-## 📊 Monitoring
-
-### Health Check
-
-The server provides basic health monitoring:
-
-```bash
-# Check if server is responding
-curl http://localhost:3000/health
-```
-
-### Task Status
-
-Monitor task execution through the logs or by listing tasks:
-
-```
-Agent: "Show me all my scheduled tasks"
-# Returns list with status, next execution time, etc.
-```
-
-## 🔒 Security
-
-### Rate Limiting
-- Maximum 1000 tasks per instance
-- Maximum 50 concurrent executions
-- 30-second timeout per task execution
-
-### Input Validation
-- Schedule parameters validated for safety
-- Message content sanitized
-- Resource usage monitored
-
-### API Security
-- API keys required for LibreChat integration
-- No external network access except to configured LibreChat endpoint
-
-## 🚀 Production Deployment
-
-### Docker
-
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY dist/ ./dist/
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-services:
-  scheduled-tasks:
-    build: .
-    environment:
-      - LIBRECHAT_ENDPOINT=${LIBRECHAT_ENDPOINT}
-      - LIBRECHAT_API_KEY=${LIBRECHAT_API_KEY}
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-```
-
-### Performance Tuning
-
-For high-volume usage:
-- Increase `HTTP_TIMEOUT` for slow LibreChat responses
-- Adjust `RETRY_ATTEMPTS` based on network reliability
-- Monitor memory usage and task limits
-
-## 📚 Advanced Usage
-
-### Task Templates
-
-Common patterns for quick setup:
-
-```javascript
-// Morning routine
-{
-  name: "Morning Vitamins",
-  schedule: { type: "daily", time: "08:00" },
-  message: "Time to take your vitamins! 💊"
-}
-
-// Work break reminders  
-{
-  name: "Break Reminder",
-  schedule: { type: "interval", every: 25, unit: "minutes" },
-  message: "Take a 5-minute break! 🧘‍♀️"
-}
-
-// Weekly planning
-{
-  name: "Weekly Review", 
-  schedule: { type: "weekly", dayOfWeek: "sunday", time: "18:00" },
-  message: "Time for your weekly planning session 📋"
-}
-```
-
-### Integration with Other MCP Servers
-
-Combine with other MCP servers for powerful workflows:
-
-```
-User: "Every morning at 8am, send me the weather and remind me to check my calendar"
-# Creates scheduled task that triggers agent
-# Agent uses weather MCP + calendar MCP to fulfill request
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
-
-### Development Guidelines
-
-- Follow TypeScript best practices
-- Maintain ES module compatibility
-- Add comprehensive tests
-- Update documentation
-- Use semantic commit messages
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
-## 🆘 Support
-
-- **Issues**: GitHub Issues for bugs and feature requests
-- **Documentation**: See `SCHEDULED_TASKS_MCP_DESIGN_PLAN.md` for architecture details
-- **Implementation**: See `SCHEDULED_TASKS__MCP_IMPLEMENTATION_PLAN.md` for development guide
-
-## 🎯 Roadmap
-
-### Planned Features
-- [ ] Web dashboard for task management
-- [ ] Task templates and presets  
-- [ ] Conditional task execution
-- [ ] Multiple LibreChat agent support
-- [ ] Advanced timezone handling
-- [ ] Database backend option
-- [ ] Prometheus metrics integration
-
-### Version History
-- **v1.0.0**: Initial release with core scheduling functionality
-- **v1.1.0**: Simplified datetime handling and improved LibreChat integration
-- **v1.2.0**: Enhanced tool schema clarity and validation improvements
-
----
-
-**Made with ❤️ for the LibreChat community** 
+### `enable_scheduled_task` / `

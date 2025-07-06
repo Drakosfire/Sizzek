@@ -31,7 +31,6 @@ dotenv.config({ path: envPath });
 // Environment variables validation
 const LIBRECHAT_ENDPOINT = process.env.LIBRECHAT_ENDPOINT || 'http://localhost:3080';
 const LIBRECHAT_API_KEY = process.env.LIBRECHAT_API_KEY;
-const LIBRECHAT_CONVERSATION_ID = process.env.LIBRECHAT_CONVERSATION_ID;
 const HTTP_TIMEOUT = parseInt(process.env.HTTP_TIMEOUT || '30000');
 const RETRY_ATTEMPTS = parseInt(process.env.RETRY_ATTEMPTS || '3');
 const RETRY_DELAY = parseInt(process.env.RETRY_DELAY || '1000');
@@ -39,33 +38,41 @@ const RETRY_DELAY = parseInt(process.env.RETRY_DELAY || '1000');
 // Debug logging
 console.error('Environment variables loaded:');
 console.error('LIBRECHAT_ENDPOINT:', LIBRECHAT_ENDPOINT);
-console.error('LIBRECHAT_API_KEY:', LIBRECHAT_API_KEY ? '✓ Set' : '✗ Not set');
-console.error('LIBRECHAT_CONVERSATION_ID:', LIBRECHAT_CONVERSATION_ID || 'Not set (optional)');
-
-// Debug logging for MCP storage environment variables
-console.error('\nMCP Storage Environment Variables:');
-console.error('MCP_STORAGE_TYPE:', process.env.MCP_STORAGE_TYPE || 'Not set (will default to json)');
-console.error('MCP_USER_BASED:', process.env.MCP_USER_BASED || 'Not set (will default to false)');
-console.error('MCP_USER_ID:', process.env.MCP_USER_ID || 'Not set (will default to default)');
-console.error('MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? '✓ Set' : '✗ Not set');
-console.error('MONGODB_DATABASE:', process.env.MONGODB_DATABASE || 'Not set (will default to LibreChat)');
-console.error('MONGODB_COLLECTION:', process.env.MONGODB_COLLECTION || 'Not set (will default to scheduled_tasks)');
-console.error('TASKS_FILE_PATH:', process.env.TASKS_FILE_PATH || 'Not set (will default to ./tasks.json)');
-console.error('CREDS_KEY:', process.env.CREDS_KEY ? '✓ Set' : '✗ Not set');
+console.error('LIBRECHAT_API_KEY:', LIBRECHAT_API_KEY ? '[PRESENT]' : '[MISSING]');
+console.error('HTTP_TIMEOUT:', HTTP_TIMEOUT);
+console.error('RETRY_ATTEMPTS:', RETRY_ATTEMPTS);
+console.error('RETRY_DELAY:', RETRY_DELAY);
+console.error('LIBRECHAT_AGENT_NAME:', process.env.LIBRECHAT_AGENT_NAME || '[NOT SET]');
+console.error('LIBRECHAT_AGENT_ID:', process.env.LIBRECHAT_AGENT_ID || '[NOT SET]');
+console.error('LIBRECHAT_AGENT_MODEL:', process.env.LIBRECHAT_AGENT_MODEL || '[NOT SET]');
+console.error('MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? '[PRESENT]' : '[NOT SET]');
 
 if (!LIBRECHAT_API_KEY) {
     console.error('Warning: LIBRECHAT_API_KEY not set. Tasks will only log messages instead of triggering LibreChat.');
 }
 
+// Initialize User Lookup Service
+import { createUserLookupService } from './http/user-lookup.js';
+
+const userLookupService = process.env.MONGODB_CONNECTION_STRING
+    ? createUserLookupService()
+    : undefined;
+
 // Initialize LibreChat client if API key is available
-const librechatClient = LIBRECHAT_API_KEY ? new LibreChatClient({
+const librechatClientConfig: any = {
     endpoint: LIBRECHAT_ENDPOINT,
     apiKey: LIBRECHAT_API_KEY,
-    conversationId: LIBRECHAT_CONVERSATION_ID || undefined,
     timeout: HTTP_TIMEOUT,
     retryAttempts: RETRY_ATTEMPTS,
-    retryDelay: RETRY_DELAY
-}) : undefined;
+    retryDelay: RETRY_DELAY,
+    agentName: process.env.LIBRECHAT_AGENT_NAME || 'Sizzek'
+};
+
+if (userLookupService) {
+    librechatClientConfig.userLookupService = userLookupService;
+}
+
+const librechatClient = LIBRECHAT_API_KEY ? new LibreChatClient(librechatClientConfig) : undefined;
 
 // Extract user ID from environment for user-based storage (for future use)
 // const extractUserId = (request: any): string | undefined => {
@@ -78,7 +85,7 @@ const librechatClient = LIBRECHAT_API_KEY ? new LibreChatClient({
 // };
 
 // Initialize the task manager with LibreChat client and unified storage
-const taskManager = new TaskManager(librechatClient, undefined, process.env.MCP_USER_ID);
+const taskManager = new TaskManager(librechatClient, undefined, process.env.MCP_USER_ID, userLookupService);
 const validator = new ScheduleValidator();
 
 // Initialize the web UI manager
@@ -958,6 +965,9 @@ async function main() {
             console.error('🛑 Shutting down server...');
             try {
                 await taskManager.cleanup();
+                if (userLookupService) {
+                    await userLookupService.disconnect();
+                }
                 console.error('✅ Server cleanup completed');
             } catch (cleanupError) {
                 console.error('❌ Error during cleanup:', cleanupError);

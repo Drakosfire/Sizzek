@@ -4,6 +4,7 @@ import { ScheduleValidator } from './schedule-validator.js';
 import { LibreChatClient } from '../http/librechat-client.js';
 import { TaskStorageManager } from '../storage/TaskStorageManager.js';
 import { TaskStorageManagerConfig } from '../types/storage.js';
+import { UserLookupService } from '../http/user-lookup.js';
 
 export class TaskManager {
     private tasks = new Map<string, Task>();
@@ -12,12 +13,14 @@ export class TaskManager {
     private runningTasks = new Set<string>();
     private validator = new ScheduleValidator();
     private librechatClient: LibreChatClient | undefined;
+    private userLookupService: UserLookupService | undefined;
     private userId?: string | undefined;
 
-    constructor(librechatClient?: LibreChatClient, storageConfig?: Partial<TaskStorageManagerConfig>, userId?: string) {
+    constructor(librechatClient?: LibreChatClient, storageConfig?: Partial<TaskStorageManagerConfig>, userId?: string, userLookupService?: UserLookupService) {
         this.librechatClient = librechatClient;
         this.taskStorageManager = new TaskStorageManager(storageConfig);
         this.userId = userId;
+        this.userLookupService = userLookupService;
     }
 
     async initialize(): Promise<void> {
@@ -25,6 +28,18 @@ export class TaskManager {
 
         // Initialize the storage manager
         await this.taskStorageManager.initialize();
+
+        // Initialize the user lookup service if available
+        if (this.userLookupService) {
+            try {
+                await this.userLookupService.initialize();
+                console.log('✅ User lookup service initialized successfully');
+            } catch (error) {
+                console.warn('⚠️  Failed to initialize user lookup service:', error);
+                // Don't fail the entire initialization if user lookup fails
+                // This allows fallback to hardcoded conversation ID if needed
+            }
+        }
 
         // Load existing tasks from storage
         const savedTasks = await this.taskStorageManager.loadTasks(this.userId);
