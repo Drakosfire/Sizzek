@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery List - MCP Web UI</title>
+    <!-- Use the clean, optimized grocery styles -->
+    <link rel="stylesheet" href="static/grocery-styles.css">
+    <link rel="stylesheet" href="../../../../../mcp-web-ui-standalone/templates/static/styles.css">
+    <!-- Essential ListComponent CSS for proper section header layout -->
+    <link rel="stylesheet" href="../../../../../mcp-web-ui-standalone/src/vanilla/components/ListComponent.css">
+</head>
+
+<body>
+    <div id="grocery-app">
+        <!-- Clean, semantic HTML structure -->
+        <div class="header">
+            <h1>🛒 Grocery List</h1>
+            <p class="description">Manage your grocery items with an interactive web interface</p>
+            <div class="session-info">
+                <span>Session active</span>
+                <button class="btn-extend">Extend Session</button>
+            </div>
+        </div>
+
+        <!-- Component containers following MCP Web UI patterns -->
+        <div class="component-container component-stats">
+            <div id="grocery-stats"></div>
+        </div>
+
+        <div class="component-container component-list">
+            <div id="grocery-list"></div>
+        </div>
+    </div>
+
+    <!-- Load MCP Web UI Framework components FIRST -->
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/core/BaseComponent.js"></script>
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/components/ListComponent.js"></script>
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/components/StatsComponent.js"></script>
+    <script src="../../../../../mcp-web-ui-standalone/src/vanilla/MCPFramework.js"></script>
+
+    <!-- Load clean server-specific components AFTER framework -->
+    <script src="GroceryStatsComponent.clean.js"></script>
+    <script src="GroceryListComponent.clean.js"></script>
+
+    <script>
+        // Clean implementation following MCP Web UI Design Document patterns
+        document.addEventListener('DOMContentLoaded', function () {
+            // Sample grocery data with proper structure
+            const groceryData = [
+                {
+                    id: '1',
+                    name: 'Apples',
+                    quantity: 6,
+                    unit: 'lbs',
+                    category: 'produce',
+                    purchased: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    id: '2',
+                    name: 'Milk',
+                    quantity: 1,
+                    unit: 'gallon',
+                    category: 'dairy',
+                    purchased: true,
+                    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    purchasedAt: new Date().toISOString()
+                },
+                {
+                    id: '3',
+                    name: 'Bread',
+                    quantity: 2,
+                    unit: 'loaves',
+                    category: 'pantry',
+                    purchased: false,
+                    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+                    updatedAt: new Date().toISOString()
+                }
+            ];
+
+            // Configuration following MCP Web UI Design Document patterns
+            const groceryConfig = {
+                // List component configuration
+                list: {
+                    enableSearch: true,
+                    enableFilters: true,
+                    enableToggle: true,
+                    showItemCount: true,
+                    confirmDeletes: true
+                },
+
+                // Stats component configuration
+                stats: {
+                    layout: 'grid',
+                    animate: true,
+                    showTrends: false
+                },
+
+                // Polling configuration
+                polling: {
+                    enabled: true,
+                    intervalMs: 5000
+                },
+
+                // Global settings
+                title: 'Grocery List Dashboard',
+                enableLogging: true
+            };
+
+            // Initialize grocery stats component (clean implementation)
+            const groceryStatsElement = document.getElementById('grocery-stats');
+            const groceryStats = createGroceryStatsComponent(groceryStatsElement, groceryData, groceryConfig);
+
+            // Initialize grocery list component (clean implementation)
+            const groceryListElement = document.getElementById('grocery-list');
+            const groceryList = createGroceryListComponent(groceryListElement, groceryData, groceryConfig);
+
+            // Set up component communication
+            groceryStats.on('categoryFilter', (event) => {
+                groceryList.filterByCategory(event.category);
+            });
+
+            groceryList.on('dataUpdate', (event) => {
+                groceryStats.update(event.data);
+            });
+
+            // Mock action handlers (replace with real backend integration)
+            groceryList.handleAction = async function (action, data) {
+                console.log('Action:', action, 'Data:', data);
+
+                // Simulate backend response
+                const response = {
+                    success: true,
+                    message: `Successfully performed ${action}`,
+                    data: data
+                };
+
+                // Simulate network delay
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                return response;
+            };
+
+            // Log successful initialization
+            console.log('✅ Grocery list components initialized with clean MCP Web UI patterns');
+            console.log('🎯 Components follow MCP Web UI Design Document best practices');
+            console.log('🔒 Security: XSS protection, input validation, CSP compliance');
+            console.log('📱 Mobile-first responsive design with touch optimization');
+            console.log('⚡ Performance: Optimized rendering, event delegation, debounced inputs');
+        });
+    </script>
+</body>
+
+</html>

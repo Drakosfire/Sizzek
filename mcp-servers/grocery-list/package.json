@@ -8,11 +8,13 @@
         "build": "tsc",
         "start": "node dist/index.js",
         "dev": "tsc && node dist/index.js",
-        "test": "npm run build && mocha 'tests/**/*.test.js' --timeout 30000 --exit",
-        "test:unit": "npm run build && mocha 'tests/unit/**/*.test.js' --timeout 30000 --exit",
-        "test:integration": "npm run build && mocha 'tests/integration/**/*.test.js' --timeout 30000 --exit",
-        "test:watch": "npm run build && mocha 'tests/**/*.test.js' --timeout 30000 --watch",
-        "test:cleanup": "node tests/helpers/cleanup-test-data.js",
+        "test": "npm run build && node tests/run-all-tests.js",
+        "test:unit": "npm run build && node tests/unit/grocery-manager.test.js && node tests/unit/web-ui-integration.test.js",
+        "test:integration": "npm run build && node tests/integration/mcp-server.test.js",
+        "test:utilities": "npm run build && node tests/helpers/test-utilities-validation.js",
+        "test:legacy": "npm run build && node test-basic.js && node test-api-endpoints.js",
+        "test:watch": "npm run build && node tests/run-all-tests.js",
+        "test:cleanup": "node -e \"import('./tests/helpers/test-utilities.js').then(m => m.cleanupTestEnvironment())\"",
         "lint": "eslint src --ext .ts",
         "format": "prettier --write src tests"
     },
@@ -29,7 +31,7 @@
     "license": "MIT",
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.11.1",
-        "mcp-data": "mcp-data",
+        "mcp-data": "file:../../../mcp-data",
         "mcp-web-ui": "file:../../../mcp-web-ui-standalone",
         "dotenv": "^16.5.0"
     },

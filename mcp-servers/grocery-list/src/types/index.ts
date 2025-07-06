@@ -1,31 +1,43 @@
 /**
- * Type definitions for Grocery List MCP Server
- * Based on the proven architecture of todoodles with grocery-specific enhancements
+ * Type definitions for Grocery List MCP Server - Phase 1 (Simplified)
+ * Based on the proven architecture of todoodles with basic grocery functionality
  */
 
 export interface GroceryItem {
     id: string;                    // Sequential numeric ID (per user)
     name: string;                  // Item name
-    description?: string;          // Optional description/notes
     quantity: number;              // Quantity needed
-    unit: string;                  // Unit (lbs, oz, pieces, etc.)
+    unit: string;                  // Unit (default: "pieces" for Phase 1)
     category: string;              // Store section (produce, dairy, etc.)
-    priority: 'low' | 'medium' | 'high' | 'urgent';
+    priority: 'low' | 'medium' | 'high' | 'urgent'; // Priority level
     purchased: boolean;            // Purchase status
     purchasedAt?: string;          // Purchase timestamp
-    priceExpected?: number;        // Expected price
-    priceActual?: number;          // Actual paid price
-    storeName?: string;            // Where to buy / where bought
-    brand?: string;                // Preferred brand
-    isStaple: boolean;             // Is this a regular purchase?
-    lastPurchased?: string;        // Last purchase date
-    purchaseFrequency?: number;    // Days between purchases (calculated)
     createdAt: string;             // ISO timestamp
     updatedAt: string;             // Last update timestamp
-    addedBy?: string;              // User who added (for family sharing)
-    listId?: string;               // Shopping list/trip ID
+    isStaple: boolean;             // Is this a regular purchase?
 }
 
+export interface GroceryData {
+    items: GroceryItem[];
+    lists: ShoppingList[];         // For future phases
+    priceHistory: PriceHistory[];  // For future phases
+    receipts: Receipt[];           // For future phases
+    metadata: {
+        lastId: number;
+        lastListId: number;
+        lastReceiptId: number;
+        lastPriceHistoryId: number;
+        version: string;
+        updatedAt: string;
+        totalItems: number;
+        purchasedItems: number;
+        totalSpent: number;         // For future phases
+        avgMonthlySpent: number;    // For future phases
+        lastCalculatedAt: string;
+    };
+}
+
+// Future phase interfaces (kept for structure but not used in Phase 1)
 export interface ShoppingList {
     id: string;
     name: string;
@@ -33,25 +45,21 @@ export interface ShoppingList {
     scheduledDate?: string;
     completed: boolean;
     completedAt?: string;
-    itemIds: string[];             // References to GroceryItem.id
-    totalBudget?: number;
-    actualSpent?: number;
+    itemIds: string[];
     createdAt: string;
-    updatedAt: string;
 }
 
 export interface PriceHistory {
     id: string;
-    itemName: string;              // Normalized item name
+    itemName: string;
     price: number;
     storeName: string;
     purchaseDate: string;
     brand?: string;
     quantity: number;
     unit: string;
-    pricePerUnit: number;          // Calculated price per unit
-    groceryItemId?: string;        // Link to original grocery item
-    receiptId?: string;            // Link to receipt if from receipt
+    pricePerUnit: number;
+    groceryItemId: string;
     createdAt: string;
 }
 
@@ -61,195 +69,53 @@ export interface Receipt {
     purchaseDate: string;
     totalAmount: number;
     items: ReceiptItem[];
-    imageUrl?: string;             // For receipt image storage
-    processed: boolean;            // Whether receipt has been processed
-    notes?: string;                // Additional notes
+    imageUrl?: string;
+    processed: boolean;
     createdAt: string;
-    updatedAt: string;
 }
 
 export interface ReceiptItem {
     name: string;
+    price: number;
     quantity: number;
     unit: string;
-    unitPrice: number;
-    totalPrice: number;
-    category?: string;             // Auto-categorized
-    matchedItemId?: string;        // Link to grocery item if matched
-    tax?: number;                  // Tax amount if applicable
+    matchedItemId?: string;
 }
 
-export interface GroceryData {
-    items: GroceryItem[];
-    lists: ShoppingList[];         // Shopping trip lists
-    priceHistory: PriceHistory[];  // Historical price data
-    receipts: Receipt[];           // Receipt records
-    metadata: GroceryMetadata;
-}
-
-export interface GroceryMetadata {
-    lastId: number;
-    lastListId: number;
-    lastReceiptId: number;
-    lastPriceHistoryId: number;
-    version: string;
-    updatedAt: string;
-    totalItems: number;
-    purchasedItems: number;
-    totalSpent: number;            // Lifetime spending
-    avgMonthlySpent: number;       // Average monthly spending
-    lastCalculatedAt: string;      // Last time stats were calculated
-}
-
-export interface UserPreferences {
-    defaultStore: string;
-    preferredUnits: string[];
-    budgetLimits: {
-        weekly?: number;
-        monthly?: number;
-        yearly?: number;
-    };
-    categories: CategoryDefinition[];
-    notifications: {
-        budgetAlerts: boolean;
-        staplesReminders: boolean;
-        priceAlerts: boolean;
-    };
-    privacy: {
-        shareWithFamily: boolean;
-        allowPriceTracking: boolean;
-    };
-}
-
-export interface CategoryDefinition {
-    name: string;
-    icon: string;
-    sortOrder: number;
-    storeSection?: string;         // Physical store section
-    budgetAllocation?: number;     // Percentage of budget for this category
-}
-
-export interface FrequencyAnalysis {
-    itemName: string;
-    averageDaysBetweenPurchases: number;
-    totalPurchases: number;
-    lastPurchaseDate: string;
-    nextSuggestedDate: string;
-    confidence: number;            // 0-1, how confident we are in the prediction
-    isStaple: boolean;
-    seasonalPattern?: SeasonalPattern;
-}
-
-export interface SeasonalPattern {
-    spring: number;   // Purchase frequency multiplier for spring
-    summer: number;   // Purchase frequency multiplier for summer
-    fall: number;     // Purchase frequency multiplier for fall
-    winter: number;   // Purchase frequency multiplier for winter
-}
-
-export interface PriceAnalysis {
-    itemName: string;
-    currentPrice: number;
-    averagePrice: number;
-    lowestPrice: number;
-    highestPrice: number;
-    priceHistory: PriceHistory[];
-    trend: 'increasing' | 'decreasing' | 'stable';
-    trendPercentage: number;       // Percentage change over time
-    bestStore: string;             // Store with best average price
-    worstStore: string;            // Store with highest average price
-}
-
-export interface BudgetAnalysis {
-    period: 'week' | 'month' | 'quarter' | 'year';
-    startDate: string;
-    endDate: string;
-    totalBudget: number;
-    totalSpent: number;
-    remainingBudget: number;
-    percentageUsed: number;
-    categoryBreakdown: CategorySpending[];
-    isOverBudget: boolean;
-    projectedSpending?: number;    // Based on current trends
-}
-
-export interface CategorySpending {
-    category: string;
-    budgetAllocated: number;
-    amountSpent: number;
-    percentageUsed: number;
-    isOverBudget: boolean;
-    itemCount: number;
-}
-
-export interface ShoppingOptimization {
-    listId: string;
-    storeName: string;
-    optimizedRoute: string[];      // Categories in optimal order
-    estimatedTime: number;         // Estimated shopping time in minutes
-    estimatedTotal: number;        // Estimated total cost
-    suggestions: OptimizationSuggestion[];
-}
-
-export interface OptimizationSuggestion {
-    type: 'substitution' | 'quantity' | 'store' | 'timing';
-    itemId: string;
-    currentValue: string | number;
-    suggestedValue: string | number;
-    reason: string;
-    potentialSavings?: number;
-}
-
-// Request/Response types for MCP tools
+// Phase 1 Request interfaces (simplified)
 export interface AddGroceryItemRequest {
     name: string;
     quantity?: number;
-    unit?: string;
     category?: string;
-    priority?: 'low' | 'medium' | 'high' | 'urgent';
-    priceExpected?: number;
-    storeName?: string;
-    brand?: string;
-    listId?: string;
-    description?: string;
 }
 
 export interface PurchaseItemRequest {
     id: string;
-    priceActual?: number;
-    storeName?: string;
-    purchaseDate?: string;
-    notes?: string;
 }
 
+// Future phase request interfaces (for reference)
 export interface CreateShoppingListRequest {
     name: string;
     storeName?: string;
     scheduledDate?: string;
-    budget?: number;
     itemIds?: string[];
 }
 
 export interface ProcessReceiptRequest {
     receiptText: string;
     storeName: string;
-    purchaseDate?: string;
-    imageUrl?: string;
-    totalAmount?: number;
+    purchaseDate: string;
 }
 
 export interface GetPriceHistoryRequest {
     itemName: string;
     storeName?: string;
     daysBack?: number;
-    includeAllStores?: boolean;
 }
 
 export interface AnalyzeSpendingRequest {
-    period: 'week' | 'month' | 'quarter' | 'year';
+    period: 'week' | 'month' | 'year';
     category?: string;
-    startDate?: string;
-    endDate?: string;
 }
 
 // Configuration types

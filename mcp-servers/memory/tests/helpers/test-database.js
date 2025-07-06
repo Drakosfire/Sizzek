@@ -61,7 +61,8 @@ class TestDatabase {
         const collection = this.db.collection('mcp_memory');
 
         // Create indexes for efficient querying
-        await collection.createIndex({ userId: 1 });
+        // Note: userId should be unique to match PaginatedGraphStorage expectations
+        await collection.createIndex({ userId: 1 }, { unique: true });
         await collection.createIndex({ userId: 1, 'data.entities.name': 1 });
         await collection.createIndex({ userId: 1, 'data.entities.entityType': 1 });
         await collection.createIndex({ userId: 1, 'data.relations.from': 1 });
