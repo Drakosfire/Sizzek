@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Movie Journal</title>
+    <link rel="stylesheet" href="styles/movie-ui-styles.css">
+</head>
+
+<body>
+    <div class="movie-container">
+        <!-- Header -->
+        <header class="movie-header">
+            <h1 class="movie-title">🎬 Movie Journal</h1>
+            <p class="movie-subtitle">Your shared movie collection and personal reviews</p>
+        </header>
+
+        <!-- Dashboard Stats -->
+        <section class="movie-stats">
+            <div class="stat-card">
+                <div class="stat-icon">🎬</div>
+                <div class="stat-value" id="total-movies">0</div>
+                <div class="stat-label">Movies Watched</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📅</div>
+                <div class="stat-value" id="this-month">0</div>
+                <div class="stat-label">This Month</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⭐</div>
+                <div class="stat-value" id="avg-rating">0.0</div>
+                <div class="stat-label">Avg Rating</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">💯</div>
+                <div class="stat-value" id="always-movies">0</div>
+                <div class="stat-label">Always Movies</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-value" id="suggestion-ready">0</div>
+                <div class="stat-label">Ready to Suggest</div>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="action-section">
+            <button class="action-btn" id="add-movie-btn">
+                <span>➕</span>
+                Add Movie
+            </button>
+            <button class="action-btn highlight" id="suggest-movie-btn">
+                <span>🎯</span>
+                Get Suggestions
+            </button>
+            <button class="action-btn secondary" id="share-journal-btn">
+                <span>🤝</span>
+                Share Journal
+            </button>
+        </section>
+
+        <!-- Movie Collection -->
+        <section class="movie-collection">
+            <h2>Your Movie Collection</h2>
+
+            <!-- Movie Filters -->
+            <div class="movie-filters">
+                <input type="search" id="search-movies" placeholder="Search movies...">
+                <select id="filter-genre">
+                    <option value="">All Genres</option>
+                    <option value="Action">Action</option>
+                    <option value="Comedy">Comedy</option>
+                    <option value="Drama">Drama</option>
+                    <option value="Horror">Horror</option>
+                    <option value="Romance">Romance</option>
+                    <option value="Thriller">Thriller</option>
+                    <option value="Documentary">Documentary</option>
+                    <option value="Adventure">Adventure</option>
+                    <option value="Family">Family</option>
+                </select>
+                <select id="filter-rating">
+                    <option value="">All Ratings</option>
+                    <option value="9">9+ Stars</option>
+                    <option value="7">7+ Stars</option>
+                    <option value="5">5+ Stars</option>
+                </select>
+                <select id="filter-section">
+                    <option value="all">All Movies</option>
+                    <option value="recent">Recently Watched</option>
+                    <option value="always">Always Movies</option>
+                    <option value="unwatched">Want to Watch</option>
+                </select>
+            </div>
+
+            <!-- Movie Grid -->
+            <div class="movie-grid" id="movie-grid">
+                <!-- Movies will be populated here -->
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state hidden" id="empty-state">
+                <div class="empty-state-icon">🎬</div>
+                <h3 class="empty-state-title">No movies yet</h3>
+                <p class="empty-state-message">Add your first movie to get started!</p>
+                <button class="action-btn" onclick="openAddMovieModal()">
+                    <span>➕</span>
+                    Add Your First Movie
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Add Movie Modal -->
+    <div class="modal" id="add-movie-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add Movie</h2>
+                <button class="modal-close" onclick="closeModal('add-movie-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-movie-form">
+                    <div class="form-group">
+                        <label class="form-label">Movie Title *</label>
+                        <input type="text" class="form-input" id="movie-title" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Release Year *</label>
+                        <input type="number" class="form-input" id="movie-year" min="1900" max="2030" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Director *</label>
+                        <input type="text" class="form-input" id="movie-director" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Genres</label>
+                        <div class="genre-checkboxes">
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Action"> Action
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Comedy"> Comedy
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Drama"> Drama
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Horror"> Horror
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Romance"> Romance
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Thriller"> Thriller
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Documentary"> Documentary
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Adventure"> Adventure
+                            </label>
+                            <label class="form-checkbox">
+                                <input type="checkbox" value="Family"> Family
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="form-btn secondary"
+                            onclick="closeModal('add-movie-modal')">Cancel</button>
+                        <button type="submit" class="form-btn primary">Add Movie</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Review Modal -->
+    <div class="modal" id="add-review-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Rate & Review</h2>
+                <button class="modal-close" onclick="closeModal('add-review-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-review-form">
+                    <input type="hidden" id="review-movie-id">
+                    <div class="form-group">
+                        <label class="form-label">Your Rating (1-10) *</label>
+                        <input type="number" class="form-input" id="review-rating" min="1" max="10" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Your Review *</label>
+                        <textarea class="form-textarea" id="review-text" placeholder="What did you think?"
+                            required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date Watched *</label>
+                        <input type="date" class="form-input" id="review-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Viewing Mood</label>
+                        <select class="form-select" id="review-mood">
+                            <option value="">Select mood...</option>
+                            <option value="relaxing">😌 Relaxing</option>
+                            <option value="exciting">⚡ Exciting</option>
+                            <option value="thoughtful">🤔 Thoughtful</option>
+                            <option value="nostalgic">💭 Nostalgic</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="review-rewatchable"> Would you rewatch this?
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="form-btn secondary"
+                            onclick="closeModal('add-review-modal')">Cancel</button>
+                        <button type="submit" class="form-btn primary">Save Review</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movie Suggestions Modal -->
+    <div class="modal" id="suggestions-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Get Movie Suggestions</h2>
+                <button class="modal-close" onclick="closeModal('suggestions-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="suggestions-form">
+                    <div class="form-group">
+                        <label class="form-label">What's your mood? *</label>
+                        <select class="form-select" id="suggestion-mood" required>
+                            <option value="">Select your mood...</option>
+                            <option value="relaxing">😌 Relaxing</option>
+                            <option value="exciting">⚡ Exciting</option>
+                            <option value="thoughtful">🤔 Thoughtful</option>
+                            <option value="nostalgic">💭 Nostalgic</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Number of suggestions</label>
+                        <input type="number" class="form-input" id="suggestion-count" min="1" max="10" value="5">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="form-btn secondary"
+                            onclick="closeModal('suggestions-modal')">Cancel</button>
+                        <button type="submit" class="form-btn primary">Get Suggestions</button>
+                    </div>
+                </form>
+                <div id="suggestions-results" class="hidden">
+                    <h3>Suggested Movies</h3>
+                    <div id="suggestions-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Journal Modal -->
+    <div class="modal" id="share-journal-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Share Journal</h2>
+                <button class="modal-close" onclick="closeModal('share-journal-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="share-journal-form">
+                    <div class="form-group">
+                        <label class="form-label">User to Share With *</label>
+                        <input type="text" class="form-input" id="share-user-id" placeholder="Enter user ID..."
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Permissions</label>
+                        <select class="form-select" id="share-permissions">
+                            <option value="read">Read Only</option>
+                            <option value="write">Read & Write</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="form-btn secondary"
+                            onclick="closeModal('share-journal-modal')">Cancel</button>
+                        <button type="submit" class="form-btn primary">Share Journal</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movie Details Modal -->
+    <div class="modal" id="movie-details-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="movie-details-title">Movie Details</h2>
+                <button class="modal-close" onclick="closeModal('movie-details-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="movie-details-content">
+                    <!-- Movie details will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading hidden" id="loading">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+
+    <!-- JavaScript -->
+    <script src="movie-ui.js"></script>
+</body>
+
+</html>

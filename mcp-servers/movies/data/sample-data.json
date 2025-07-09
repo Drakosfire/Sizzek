@@ -1,0 +1,197 @@
+{
+    "movies": [
+        {
+            "id": "movie_001",
+            "title": "The Matrix",
+            "year": 1999,
+            "director": "The Wachowskis",
+            "genre": [
+                "action",
+                "sci-fi"
+            ],
+            "addedBy": "user1",
+            "addedAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+            "id": "movie_002",
+            "title": "The Princess Bride",
+            "year": 1987,
+            "director": "Rob Reiner",
+            "genre": [
+                "comedy",
+                "adventure",
+                "romance"
+            ],
+            "addedBy": "user2",
+            "addedAt": "2024-01-02T00:00:00.000Z",
+            "updatedAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+            "id": "movie_003",
+            "title": "Spirited Away",
+            "year": 2001,
+            "director": "Hayao Miyazaki",
+            "genre": [
+                "animation",
+                "family",
+                "adventure"
+            ],
+            "addedBy": "user1",
+            "addedAt": "2024-01-03T00:00:00.000Z",
+            "updatedAt": "2024-01-03T00:00:00.000Z"
+        },
+        {
+            "id": "movie_004",
+            "title": "Goodfellas",
+            "year": 1990,
+            "director": "Martin Scorsese",
+            "genre": [
+                "crime",
+                "drama"
+            ],
+            "addedBy": "user2",
+            "addedAt": "2024-01-04T00:00:00.000Z",
+            "updatedAt": "2024-01-04T00:00:00.000Z"
+        },
+        {
+            "id": "movie_005",
+            "title": "Studio Ghibli Collection",
+            "year": 2019,
+            "director": "Various",
+            "genre": [
+                "animation",
+                "family"
+            ],
+            "addedBy": "user1",
+            "addedAt": "2024-01-05T00:00:00.000Z",
+            "updatedAt": "2024-01-05T00:00:00.000Z"
+        }
+    ],
+    "reviews": [
+        {
+            "id": "review_001",
+            "movieId": "movie_001",
+            "userId": "user1",
+            "rating": 9,
+            "review": "Mind-bending sci-fi masterpiece! The action sequences are incredible.",
+            "watchedDate": "2024-01-10T00:00:00.000Z",
+            "mood": "exciting",
+            "rewatchable": true,
+            "createdAt": "2024-01-11T00:00:00.000Z",
+            "updatedAt": "2024-01-11T00:00:00.000Z"
+        },
+        {
+            "id": "review_002",
+            "movieId": "movie_001",
+            "userId": "user2",
+            "rating": 8,
+            "review": "Great movie, though some parts feel a bit dated now.",
+            "watchedDate": "2024-01-10T00:00:00.000Z",
+            "mood": "thoughtful",
+            "rewatchable": true,
+            "createdAt": "2024-01-11T00:00:00.000Z",
+            "updatedAt": "2024-01-11T00:00:00.000Z"
+        },
+        {
+            "id": "review_003",
+            "movieId": "movie_002",
+            "userId": "user1",
+            "rating": 10,
+            "review": "Perfect comfort movie! 'Hello, my name is Inigo Montoya...'",
+            "watchedDate": "2024-01-12T00:00:00.000Z",
+            "mood": "relaxing",
+            "rewatchable": true,
+            "createdAt": "2024-01-13T00:00:00.000Z",
+            "updatedAt": "2024-01-13T00:00:00.000Z"
+        },
+        {
+            "id": "review_004",
+            "movieId": "movie_002",
+            "userId": "user2",
+            "rating": 9,
+            "review": "Classic adventure with perfect humor. Never gets old!",
+            "watchedDate": "2024-01-12T00:00:00.000Z",
+            "mood": "nostalgic",
+            "rewatchable": true,
+            "createdAt": "2024-01-13T00:00:00.000Z",
+            "updatedAt": "2024-01-13T00:00:00.000Z"
+        },
+        {
+            "id": "review_005",
+            "movieId": "movie_003",
+            "userId": "user1",
+            "rating": 10,
+            "review": "Miyazaki's masterpiece. Beautiful animation and storytelling.",
+            "watchedDate": "2024-01-14T00:00:00.000Z",
+            "mood": "thoughtful",
+            "rewatchable": true,
+            "createdAt": "2024-01-15T00:00:00.000Z",
+            "updatedAt": "2024-01-15T00:00:00.000Z"
+        },
+        {
+            "id": "review_006",
+            "movieId": "movie_004",
+            "userId": "user2",
+            "rating": 9,
+            "review": "Scorsese at his finest. Great character development.",
+            "watchedDate": "2024-01-16T00:00:00.000Z",
+            "mood": "exciting",
+            "rewatchable": false,
+            "createdAt": "2024-01-17T00:00:00.000Z",
+            "updatedAt": "2024-01-17T00:00:00.000Z"
+        }
+    ],
+    "alwaysMovieVotes": [
+        {
+            "id": "vote_001",
+            "movieId": "movie_002",
+            "userId": "user1",
+            "vote": true,
+            "reason": "Perfect for any mood - comedy, adventure, romance!",
+            "votedAt": "2024-01-18T00:00:00.000Z"
+        },
+        {
+            "id": "vote_002",
+            "movieId": "movie_002",
+            "userId": "user2",
+            "vote": true,
+            "reason": "Never fails to entertain. Great for date nights.",
+            "votedAt": "2024-01-18T00:00:00.000Z"
+        },
+        {
+            "id": "vote_003",
+            "movieId": "movie_003",
+            "userId": "user1",
+            "vote": true,
+            "reason": "Beautiful and calming. Perfect for relaxing evenings.",
+            "votedAt": "2024-01-19T00:00:00.000Z"
+        }
+    ],
+    "journalSharing": [
+        {
+            "userId": "user1",
+            "sharedWith": [
+                "user2"
+            ],
+            "sharedBy": [
+                "user2"
+            ],
+            "journalName": "Our Movie Collection",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+            "userId": "user2",
+            "sharedWith": [
+                "user1"
+            ],
+            "sharedBy": [
+                "user1"
+            ],
+            "journalName": "Our Movie Collection",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+        }
+    ]
+}

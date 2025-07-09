@@ -1,0 +1,36 @@
+{
+    "name": "movies-mcp-server",
+    "version": "1.0.0",
+    "description": "Multi-user movie journal MCP server with intelligent suggestions",
+    "main": "dist/index.js",
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "tsx watch src/index.ts",
+        "test": "node tests/run-all-tests.js",
+        "test:unit:movie-manager": "tsx tests/unit/movie-manager.test.ts",
+        "test:unit:suggestion-engine": "tsx tests/unit/suggestion-engine.test.ts",
+        "test:integration": "tsx tests/integration/multi-user-workflow.test.ts"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.0.0",
+        "dotenv": "^16.4.5",
+        "mcp-data": "file:../../../mcp-data-standalone",
+        "mcp-web-ui": "file:../../../mcp-web-ui-standalone"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "tsx": "^4.20.3",
+        "typescript": "^5.0.0"
+    },
+    "keywords": [
+        "mcp",
+        "movies",
+        "journal",
+        "multi-user",
+        "recommendations"
+    ],
+    "author": "Sizzek",
+    "license": "MIT"
+}

@@ -1,0 +1,396 @@
+/* Movie Journal CSS - MCP Web UI Framework Integration */
+
+/* Movie-specific color scheme */
+:root {
+    --movie-primary: #e50914;
+    /* Netflix red */
+    --movie-secondary: #221f1f;
+    /* Dark gray */
+    --movie-accent: #f5c518;
+    /* IMDB yellow */
+    --movie-success: #46d369;
+    /* Green for ratings */
+    --movie-warning: #ff6b35;
+    /* Orange for priorities */
+    --movie-info: #00a8ff;
+    /* Blue for info */
+    --movie-background: #141414;
+    /* Dark theme background */
+    --movie-surface: #2f2f2f;
+    /* Card backgrounds */
+    --movie-text: #ffffff;
+    /* Primary text */
+    --movie-text-secondary: #cccccc;
+    /* Secondary text */
+}
+
+/* Movie-specific component styling */
+.movie-card {
+    background: var(--movie-surface);
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.movie-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+    border-color: var(--movie-primary);
+}
+
+.movie-card.always-movie {
+    border-color: var(--movie-accent);
+    background: linear-gradient(135deg, var(--movie-surface) 0%, rgba(245, 197, 24, 0.1) 100%);
+}
+
+.always-movie-badge {
+    background: var(--movie-accent);
+    color: #000;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+
+/* Rating display styling */
+.rating-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.875rem;
+}
+
+.rating-excellent {
+    background: rgba(70, 211, 105, 0.2);
+    color: var(--movie-success);
+}
+
+.rating-good {
+    background: rgba(245, 197, 24, 0.2);
+    color: var(--movie-accent);
+}
+
+.rating-okay {
+    background: rgba(255, 107, 53, 0.2);
+    color: var(--movie-warning);
+}
+
+.rating-poor {
+    background: rgba(229, 9, 20, 0.2);
+    color: var(--movie-primary);
+}
+
+/* Genre tags */
+.genre-tag {
+    display: inline-block;
+    background: var(--movie-secondary);
+    color: var(--movie-text);
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    margin: 0.125rem;
+    border: 1px solid #444;
+}
+
+.genre-action {
+    border-color: #ff6b35;
+}
+
+.genre-comedy {
+    border-color: #ffa502;
+}
+
+.genre-drama {
+    border-color: #3742fa;
+}
+
+.genre-horror {
+    border-color: #ff3838;
+}
+
+.genre-romance {
+    border-color: #ff6b9d;
+}
+
+.genre-thriller {
+    border-color: #5f27cd;
+}
+
+.genre-documentary {
+    border-color: #00d2d3;
+}
+
+.genre-adventure {
+    border-color: #ff9ff3;
+}
+
+.genre-family {
+    border-color: #7bed9f;
+}
+
+.genre-sci-fi {
+    border-color: #70a1ff;
+}
+
+/* Movie stats dashboard */
+.movie-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.movie-stat-card {
+    background: var(--movie-surface);
+    padding: 1.5rem;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #444;
+    transition: transform 0.2s ease;
+}
+
+.movie-stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.movie-stat-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.movie-stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--movie-primary);
+    margin-bottom: 0.25rem;
+}
+
+.movie-stat-label {
+    color: var(--movie-text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Action buttons */
+.movie-action-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 0.25rem;
+}
+
+.movie-action-btn.primary {
+    background: var(--movie-primary);
+    color: white;
+}
+
+.movie-action-btn.primary:hover {
+    background: #b8070f;
+}
+
+.movie-action-btn.secondary {
+    background: var(--movie-secondary);
+    color: var(--movie-text);
+    border: 1px solid #444;
+}
+
+.movie-action-btn.secondary:hover {
+    background: #444;
+}
+
+/* Suggestion interface */
+.suggestion-mood-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.mood-option {
+    background: var(--movie-surface);
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.mood-option:hover {
+    border-color: var(--movie-primary);
+    transform: translateY(-2px);
+}
+
+.mood-option.selected {
+    border-color: var(--movie-accent);
+    background: rgba(245, 197, 24, 0.1);
+}
+
+.mood-emoji {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.mood-label {
+    font-weight: bold;
+    color: var(--movie-text);
+    margin-bottom: 0.5rem;
+}
+
+.mood-description {
+    color: var(--movie-text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Journal sharing */
+.journal-members {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.member-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--movie-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 0.75rem;
+}
+
+/* Search and filters */
+.movie-search-filters {
+    background: var(--movie-surface);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.5rem;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: var(--movie-background);
+    color: var(--movie-text);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--movie-primary);
+}
+
+.filter-select {
+    padding: 0.5rem;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: var(--movie-background);
+    color: var(--movie-text);
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--movie-text-secondary);
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state-title {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--movie-text);
+}
+
+.empty-state-message {
+    margin-bottom: 2rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .movie-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .suggestion-mood-picker {
+        grid-template-columns: 1fr;
+    }
+
+    .movie-search-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-input {
+        min-width: auto;
+    }
+}
+
+/* Dark theme enhancements */
+body.dark-theme {
+    background-color: var(--movie-background);
+    color: var(--movie-text);
+}
+
+/* Framework integration overrides */
+.list-component .item {
+    background: var(--movie-surface);
+    border-color: #444;
+}
+
+.stats-component .metric-card {
+    background: var(--movie-surface);
+    border-color: #444;
+}
+
+.modal-content {
+    background: var(--movie-surface);
+    color: var(--movie-text);
+}
+
+/* Loading states */
+.loading-shimmer {
+    background: linear-gradient(90deg,
+            var(--movie-surface) 25%,
+            rgba(255, 255, 255, 0.1) 50%,
+            var(--movie-surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
