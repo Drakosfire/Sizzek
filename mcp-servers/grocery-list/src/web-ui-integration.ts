@@ -55,15 +55,29 @@ export class GroceryListWebUIManager {
     /**
      * Handle the get_web_ui tool call
      */
-    async handleGetWebUI(userId: string): Promise<{
+    async handleGetWebUI(userId: string, userContext?: any): Promise<{
         content: Array<{ type: string; text: string }>;
     }> {
         this.log('INFO', `[GROCERY-WEB-UI] handleGetWebUI called with userId: "${userId}"`);
+
+        if (userContext) {
+            this.log('INFO', `[GROCERY-WEB-UI] Enhanced context:`, {
+                isSharedContext: userContext.isSharedContext,
+                contextType: userContext.contextType,
+                originalUserId: userContext.originalUserId,
+                sharedWithCount: userContext.sharedWith?.length || 0
+            });
+        }
 
         // Debug: Check how many grocery items this user ID has
         try {
             const userGroceries = await this.groceryManager.getGroceryItems(userId);
             this.log('INFO', `[GROCERY-WEB-UI] User "${userId}" has ${userGroceries.length} grocery items`);
+
+            // Enhanced context information for shared scenarios
+            if (userContext?.isSharedContext) {
+                this.log('INFO', `[GROCERY-WEB-UI] Operating in shared context - original user: ${userContext.originalUserId}`);
+            }
 
             // If user has no groceries, let's check what user IDs do have data (debug helper)
             if (userGroceries.length === 0 && process.env.MCP_DEBUG === 'true') {
@@ -74,6 +88,7 @@ export class GroceryListWebUIManager {
             this.log('ERROR', `[GROCERY-WEB-UI] Error checking user groceries: ${error}`);
         }
 
+        // Pass context to web UI for enhanced rendering
         return this.webUI.handleGetWebUI(userId);
     }
 
@@ -198,7 +213,7 @@ export class GroceryListWebUIManager {
                             "true": {
                                 item: ["delete", "mark_needed"],
                                 bulk: ["delete", "mark_needed"],
-                                global: []
+                                global: ["clear_purchased"]
                             }
                         },
 
@@ -239,6 +254,14 @@ export class GroceryListWebUIManager {
                     type: "button",
                     handler: "add",
                     icon: "🛒"
+                },
+                {
+                    id: "clear_purchased",
+                    label: "Clear Purchased Items",
+                    type: "button",
+                    handler: "clear_purchased",
+                    icon: "🧹",
+                    confirm: "Are you sure you want to clear all purchased items? This will permanently delete them from your list."
                 }
             ],
             polling: {

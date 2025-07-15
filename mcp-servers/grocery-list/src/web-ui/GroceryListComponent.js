@@ -105,7 +105,7 @@ function createGroceryListComponent(element, data, config = {}) {
             actions: {
                 item: ['edit', 'delete'],
                 bulk: ['delete', 'purchase'],
-                global: ['add', 'import']
+                global: ['add', 'import', 'clear_purchased']
             },
 
             // Section-specific actions
@@ -118,7 +118,7 @@ function createGroceryListComponent(element, data, config = {}) {
                 'true': {
                     item: ['delete', 'mark_needed'],
                     bulk: ['delete', 'mark_needed'],
-                    global: []
+                    global: ['clear_purchased']
                 }
             },
 
@@ -271,6 +271,20 @@ function createGroceryListComponent(element, data, config = {}) {
         }
     };
 
+    // Enhanced action configuration with grocery-specific actions
+    const originalGetActionConfig = groceryList.getActionConfig;
+    groceryList.getActionConfig = function (action) {
+        const groceryActions = {
+            purchase: { label: 'Mark as Purchased', icon: '✅', type: 'success' },
+            mark_needed: { label: 'Mark as Needed', icon: '🛒', type: 'warning' },
+            clear_purchased: { label: 'Clear Purchased Items', icon: '🧹', type: 'danger' },
+            add: { label: 'Add Item', icon: '➕', type: 'primary' },
+            import: { label: 'Import List', icon: '📥', type: 'secondary' }
+        };
+
+        return groceryActions[action] || originalGetActionConfig.call(this, action);
+    };
+
     // Grocery-specific action handling
     const originalHandleItemAction = groceryList.handleItemAction;
     groceryList.handleItemAction = async function (action, id) {
@@ -278,6 +292,8 @@ function createGroceryListComponent(element, data, config = {}) {
             await this.handlePurchaseItem(id);
         } else if (action === 'mark_needed') {
             await this.handleMarkNeededItem(id);
+        } else if (action === 'clear_purchased') {
+            await this.handleClearPurchased();
         } else {
             return originalHandleItemAction.call(this, action, id);
         }
@@ -294,6 +310,9 @@ function createGroceryListComponent(element, data, config = {}) {
                 break;
             case 'mark_needed':
                 await this.handleBulkMarkNeeded(selectedIds);
+                break;
+            case 'clear_purchased':
+                await this.handleClearPurchased();
                 break;
             default:
                 return originalHandleBulkAction.call(this, action);
@@ -366,6 +385,22 @@ function createGroceryListComponent(element, data, config = {}) {
         try {
             await this.handleAction('bulk_mark_needed', { ids: selectedIds });
             this.listState.selectedItems.clear();
+            this.render();
+        } catch (error) {
+            this.handleError(error);
+        }
+    };
+
+    // Add clear purchased items functionality
+    groceryList.handleClearPurchased = async function () {
+        try {
+            // Confirm action with user
+            if (!confirm('Are you sure you want to clear all purchased items? This will permanently delete them from your list.')) {
+                return;
+            }
+
+            await this.handleAction('clear_purchased', {});
+            this.log('INFO', 'Cleared all purchased grocery items');
             this.render();
         } catch (error) {
             this.handleError(error);

@@ -84,8 +84,19 @@ export class GroceryListManager {
         log('INFO', `[REQUEST-${requestId}] ===== NEW TOOL CALL REQUEST =====`);
         log('INFO', `[REQUEST-${requestId}] Tool: ${request.params?.name || 'UNKNOWN'}`);
 
-        const userId = extractUserId(request);
-        log('INFO', `[REQUEST-${requestId}] Extracted userId: "${userId || 'NONE'}"`);
+        // Extract enhanced user context
+        const userContext = extractUserContext(request);
+        log('INFO', `[REQUEST-${requestId}] User context:`, {
+            currentUser: userContext.userId,
+            effectiveUser: userContext.effectiveUserId,
+            isSharedContext: userContext.isSharedContext,
+            contextType: userContext.contextType,
+            sharedWithCount: userContext.sharedWith.length,
+            tenantId: userContext.tenantId
+        });
+
+        // Backward compatibility
+        const userId = userContext.effectiveUserId;
         log('INFO', `[REQUEST-${requestId}] User-based storage: ${this.isUserBased}`);
 
         try {
@@ -111,13 +122,16 @@ export class GroceryListManager {
 
                     const item = await this.addGroceryItem(name, quantity, category, userId);
 
+                    // Enhanced response with context information
+                    const contextInfo = userContext.isSharedContext
+                        ? ` (added to shared list for ${userContext.originalUserId})`
+                        : '';
+
                     return {
-                        content: [
-                            {
-                                type: "text",
-                                text: `Grocery item added successfully: ${item.name} (${item.quantity}) - ID: ${item.id}`
-                            }
-                        ]
+                        content: [{
+                            type: "text",
+                            text: `Grocery item added successfully${contextInfo}: ${item.name} (${item.quantity}) - ID: ${item.id}`
+                        }]
                     };
                 }
 
@@ -236,7 +250,6 @@ export class GroceryListManager {
                 case "get_grocery_list": {
                     log('INFO', `[REQUEST-${requestId}] Processing get_grocery_list`);
                     const { purchased } = request.params.arguments;
-                    log('INFO', `[REQUEST-${requestId}] Purchased filter: ${purchased}`);
 
                     let items;
 
@@ -251,18 +264,19 @@ export class GroceryListManager {
                         items = await this.getGroceryItems(userId);
                     }
 
-                    log('INFO', `[REQUEST-${requestId}] Returning ${items.length} grocery items`);
+                    // Add context information to response
+                    const contextInfo = userContext.isSharedContext
+                        ? ` (shared context from ${userContext.originalUserId})`
+                        : '';
 
-                    const response = {
-                        content: [
-                            {
-                                type: "text",
-                                text: JSON.stringify(items, null, 2)
-                            }
-                        ]
+                    log('INFO', `[REQUEST-${requestId}] Returning ${items.length} grocery items${contextInfo}`);
+
+                    return {
+                        content: [{
+                            type: "text",
+                            text: JSON.stringify(items, null, 2)
+                        }]
                     };
-
-                    return response;
                 }
 
                 case "delete_grocery_item": {
@@ -345,22 +359,19 @@ export class GroceryListManager {
                 }
 
                 case "get_web_ui": {
-                    log('INFO', `[REQUEST-${requestId}] Processing get_web_ui`);
-                    const effectiveUserId = userId || this.getUserId();
+                    log('INFO', `[REQUEST-${requestId}] Processing get_web_ui with context`);
 
                     try {
-                        const webUIResponse = await webUIManager.handleGetWebUI(effectiveUserId);
-                        log('INFO', `[REQUEST-${requestId}] Web UI generated successfully for user: ${effectiveUserId}`);
+                        const webUIResponse = await webUIManager.handleGetWebUI(userId, userContext);
+                        log('INFO', `[REQUEST-${requestId}] Web UI generated successfully for effective user: ${userId}`);
                         return webUIResponse;
                     } catch (error) {
                         log('ERROR', `[REQUEST-${requestId}] Failed to generate web UI: ${error}`);
                         return {
-                            content: [
-                                {
-                                    type: "text",
-                                    text: `Error generating web UI: ${error instanceof Error ? error.message : 'Unknown error'}`
-                                }
-                            ],
+                            content: [{
+                                type: "text",
+                                text: `Error generating web UI: ${error instanceof Error ? error.message : 'Unknown error'}`
+                            }],
                             isError: true
                         };
                     }
@@ -734,20 +745,72 @@ export class GroceryListManager {
     }
 }
 
-// Extract user ID from request context (same pattern as todoodles)
+// Enhanced user context interface
+interface UserContext {
+    userId: string;
+    originalUserId?: string;
+    sharedWith: string[];
+    contextType: 'user' | 'shared';
+    tenantId?: string;
+    isSharedContext: boolean;
+    effectiveUserId: string;
+}
+
+// Enhanced user context extraction supporting scheduled task context
+function extractUserContext(request: any): UserContext {
+    const userId = request.params?.userId;
+    const originalUserId = request.params?.originalUserId;
+    const sharedWith = request.params?.sharedWith || [];
+    const contextType = request.params?.contextType || 'user';
+    const tenantId = request.params?.tenantId;
+
+    // Determine effective user ID for data operations
+    const effectiveUserId = originalUserId || userId;
+    const isSharedContext = !!originalUserId;
+
+    if (!effectiveUserId) {
+        log('ERROR', 'No user context available in request:', JSON.stringify(request.params, null, 2));
+        throw new Error('No user context available in request');
+    }
+
+    log('DEBUG', 'Extracted user context:', {
+        userId,
+        originalUserId,
+        effectiveUserId,
+        isSharedContext,
+        contextType,
+        sharedWithCount: sharedWith.length,
+        tenantId
+    });
+
+    return {
+        userId: userId || 'unknown',
+        originalUserId,
+        sharedWith,
+        contextType,
+        tenantId,
+        isSharedContext,
+        effectiveUserId
+    };
+}
+
+// Backward compatibility: Extract user ID using legacy method
 function extractUserId(request: any): string | undefined {
-    // Single source of truth: request.params.userId
-    if (request.params?.userId && typeof request.params.userId === 'string' && request.params.userId.trim() !== '') {
-        log('DEBUG', `Found user ID from request.params.userId: ${request.params.userId}`);
-        return request.params.userId.trim();
+    try {
+        const context = extractUserContext(request);
+        return context.effectiveUserId;
+    } catch (error) {
+        log('WARN', 'Failed to extract user context, falling back to legacy method:', error);
+
+        // Legacy fallback
+        if (request.params?.userId) {
+            return request.params.userId.trim();
+        }
+        if (process.env.MCP_USER_ID) {
+            return process.env.MCP_USER_ID;
+        }
+        return undefined;
     }
-    // Optional: fallback for dev/testing
-    if (process.env.MCP_USER_ID) {
-        log('DEBUG', `Falling back to MCP_USER_ID env: ${process.env.MCP_USER_ID}`);
-        return process.env.MCP_USER_ID;
-    }
-    log('DEBUG', 'No user ID found, using default. Request object:', JSON.stringify(request, null, 2));
-    return undefined;
 }
 
 // Initialize the grocery list manager
