@@ -286,7 +286,13 @@ export class TaskStorageManager {
             createdAt: this.convertToDate(task.createdAt),
             updatedAt: this.convertToDate(task.updatedAt),
             lastRun: task.lastRun ? this.convertToDate(task.lastRun) : undefined,
-            nextRun: task.nextRun ? this.convertToDate(task.nextRun) : undefined
+            nextRun: task.nextRun ? this.convertToDate(task.nextRun) : undefined,
+            // Ensure sharedWith is always an array (for backward compatibility)
+            sharedWith: Array.isArray(task.sharedWith) ? task.sharedWith : [],
+            // Ensure creatorUserId exists (for backward compatibility)
+            creatorUserId: task.creatorUserId || process.env.MCP_USER_ID || 'unknown',
+            // Ensure contextType exists (for backward compatibility)
+            contextType: task.contextType || (Array.isArray(task.sharedWith) && task.sharedWith.length > 0 ? 'shared' : 'user')
         }));
     }
 

@@ -26,15 +26,13 @@ export class LibreChatClient {
     }
 
     async triggerTask(task: Task): Promise<void> {
-        // Get the full user object (includes phone number)
-        const user = await this.getUser();
-
-        if (!user) {
+        // Get the agent user (who will appear to send the message)
+        const agentUser = await this.getUser();
+        if (!agentUser) {
             throw new Error('Unable to find agent user. Please check agent configuration.');
         }
-
-        if (!user.phoneNumber) {
-            throw new Error(`Agent user ${user._id} does not have a phone number. Cannot send scheduled message.`);
+        if (!agentUser.phoneNumber) {
+            throw new Error(`Agent user ${agentUser._id} does not have a phone number. Cannot send scheduled message.`);
         }
 
         const request: TriggerRequest = {
@@ -46,16 +44,26 @@ export class LibreChatClient {
                 taskName: task.name,
                 schedule: task.schedule,
                 triggeredAt: new Date().toISOString(),
-                userId: user._id.toString(),
+                userId: agentUser._id.toString(),
                 agentName: this.config.agentName,
-                // Agent-specific metadata for proper routing
                 endpoint: 'agents',
                 agent_id: process.env.LIBRECHAT_AGENT_ID || 'default',
-                model: process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4o'
+                model: process.env.LIBRECHAT_AGENT_MODEL || 'gpt-4o',
+
+                // NEW: Original user context for MCP servers
+                originalUserId: task.creatorUserId,
+                sharedWith: task.sharedWith,
+                contextType: task.contextType,
+                tenantId: task.tenantId,
+
+                // Instructions for the agent about context
+                additional_instructions: `SHARED CONTEXT: This scheduled task was created by user ${task.creatorUserId}. ` +
+                    `${(task.sharedWith?.length || 0) > 0 ? `It is shared with: ${task.sharedWith?.join(', ')}. ` : ''}` +
+                    `When using MCP tools, operate in the creator's context for data consistency.`
             }
         };
 
-        await this.sendWithRetry(() => this.sendTriggerRequest(request, user.phoneNumber));
+        await this.sendWithRetry(() => this.sendTriggerRequest(request, agentUser.phoneNumber));
     }
 
     private async getUser(): Promise<any> {
@@ -135,8 +143,16 @@ export class LibreChatClient {
                     schedule: request.metadata?.schedule,
                     triggeredAt: request.metadata?.triggeredAt,
                     agentName: this.config.agentName,
+
+                    // NEW: Original user context for MCP servers
+                    originalUserId: request.metadata?.originalUserId,
+                    sharedWith: request.metadata?.sharedWith,
+                    contextType: request.metadata?.contextType,
+                    tenantId: request.metadata?.tenantId,
+
                     // Instructions for the agent
-                    additional_instructions: `SCHEDULED TASK CONTEXT: This is a scheduled reminder/message that was set up previously. You should respond appropriately to the task content.`,
+                    additional_instructions: request.metadata?.additional_instructions ||
+                        `SCHEDULED TASK CONTEXT: This is a scheduled reminder/message that was set up previously. You should respond appropriately to the task content.`,
                     // Conversation metadata for new conversation creation
                     conversationMetadata: {
                         title: `Scheduled Task: ${taskName}`,

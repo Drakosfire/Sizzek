@@ -18,6 +18,7 @@ interface TaskDisplayData extends Task {
 export class ScheduledTasksWebUIManager {
     private webUI: MCPWebUI<TaskDisplayData>;
     private validator = new ScheduleValidator();
+    private currentUserId?: string;
 
     constructor(
         private taskManager: TaskManager,
@@ -40,6 +41,8 @@ export class ScheduledTasksWebUIManager {
     }
 
     async handleGetWebUI(userId: string = 'default') {
+        // Store the current user ID for filtering
+        this.currentUserId = userId;
         return this.webUI.handleGetWebUI(userId);
     }
 
@@ -156,8 +159,17 @@ export class ScheduledTasksWebUIManager {
         console.log('=== WEB-UI INTEGRATION DEBUG ===');
         console.log('getDataSource called');
 
-        const tasks = this.taskManager.getAllTasks();
-        console.log('Raw tasks from TaskManager:', tasks.length);
+        const allTasks = this.taskManager.getAllTasks();
+        console.log('Raw tasks from TaskManager:', allTasks.length);
+
+        // Apply user filtering if we have a current user ID
+        let tasks = allTasks;
+        if (this.currentUserId) {
+            const userId = this.currentUserId;
+            // Filter tasks based on user access
+            tasks = allTasks.filter(task => this.hasUserAccess(task, userId));
+            console.log(`Filtered tasks for user ${userId}: ${tasks.length}/${allTasks.length}`);
+        }
 
         // Transform tasks for UI display
         const transformedTasks = tasks.map(task => ({
@@ -178,6 +190,24 @@ export class ScheduledTasksWebUIManager {
         console.log('===============================');
 
         return transformedTasks;
+    }
+
+    /**
+     * Check if a user has access to a task
+     * User has access if they are the creator or if the task is shared with them
+     */
+    private hasUserAccess(task: Task, userId: string): boolean {
+        // User is the creator
+        if (task.creatorUserId === userId) {
+            return true;
+        }
+
+        // User is in the shared list (with null/undefined check)
+        if (task.sharedWith && task.sharedWith.includes(userId)) {
+            return true;
+        }
+
+        return false;
     }
 
     private getStatusColor(status: TaskStatus): string {
@@ -218,7 +248,7 @@ export class ScheduledTasksWebUIManager {
         return description.substring(0, maxLength - 3) + '...';
     }
 
-    private async handleCreateTask(formData: any): Promise<any> {
+    private async handleCreateTask(formData: any, userId?: string): Promise<any> {
         try {
             // If no form data provided, return form schema for UI to render
             if (!formData || Object.keys(formData).length === 0) {
@@ -292,7 +322,8 @@ export class ScheduledTasksWebUIManager {
                 description: formData.description,
                 schedule: schedule,
                 message: formData.message,
-                enabled: true
+                enabled: true,
+                creatorUserId: userId || process.env.MCP_USER_ID || 'web-ui-user'
             });
 
             return {
@@ -361,11 +392,11 @@ export class ScheduledTasksWebUIManager {
         }
     }
 
-    private async handleUIUpdate(action: string, data: any): Promise<any> {
+    private async handleUIUpdate(action: string, data: any, userId?: string): Promise<any> {
         try {
             switch (action) {
                 case 'create-task':
-                    return await this.handleCreateTask(data);
+                    return await this.handleCreateTask(data, userId);
 
                 case 'toggle':
                     if (data.enabled) {
@@ -402,7 +433,8 @@ export class ScheduledTasksWebUIManager {
                         description: `Manual execution of: ${task.description || task.name}`,
                         schedule: { type: 'once', delayMinutes: 0.05 }, // 3 seconds
                         message: task.message,
-                        enabled: true
+                        enabled: true,
+                        creatorUserId: task.creatorUserId // Use the original task's creator
                     });
 
                     return {

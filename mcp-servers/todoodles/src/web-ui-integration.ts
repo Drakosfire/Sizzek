@@ -136,7 +136,6 @@ export class TodoodlesWebUIManager {
                     fields: [
                         { key: "id", label: "ID", type: "text" },
                         { key: "text", label: "Task", type: "text" },
-                        { key: "completed", label: "Done", type: "checkbox", editable: true },
                         {
                             key: "priority",
                             label: "Priority",
@@ -167,6 +166,13 @@ export class TodoodlesWebUIManager {
                     label: "Add Todo",
                     type: "button",
                     handler: "add"
+                },
+                {
+                    id: "complete",
+                    label: "Complete",
+                    type: "inline",
+                    handler: "complete",
+                    confirm: "Mark this todoodle as complete? This will delete it from your list."
                 },
                 {
                     id: "delete",
@@ -243,6 +249,22 @@ export class TodoodlesWebUIManager {
                     }
                     this.log('INFO', `Updated todo ${updateId} for user ${userId}`, { updates });
                     return updateResult.updatedTodo;
+
+                case 'complete':
+                    // Mark as completed and then delete
+                    const completeResult = await this.todoodlesManager.updateTodo(data.id, { completed: true }, userId);
+                    if (!completeResult.success) {
+                        throw new Error(`Todo with ID ${data.id} not found`);
+                    }
+
+                    // Now delete the completed todo
+                    const deleteAfterCompleteResult = await this.todoodlesManager.deleteTodo(data.id, userId);
+                    if (!deleteAfterCompleteResult.success) {
+                        this.log('WARN', `Todo ${data.id} was marked complete but could not be deleted`);
+                    }
+
+                    this.log('INFO', `Completed and deleted todo ${data.id} for user ${userId}`);
+                    return deleteAfterCompleteResult;
 
                 case 'delete':
                     const deleteResult = await this.todoodlesManager.deleteTodo(data.id, userId);

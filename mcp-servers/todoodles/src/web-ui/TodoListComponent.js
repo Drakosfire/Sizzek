@@ -50,7 +50,7 @@ function createTodoListComponent(element, data, config = {}) {
 
             // Actions configuration
             actions: {
-                item: ['edit', 'delete', 'duplicate'],
+                item: ['edit', 'complete', 'delete', 'duplicate'],
                 bulk: ['delete', 'complete', 'archive'],
                 global: ['add', 'import']
             },
@@ -346,12 +346,13 @@ function createTodoListComponent(element, data, config = {}) {
         if (!action) return;
 
         try {
-            if (action.type === 'delete') {
-                // Restore the deleted item by adding it back
+            if (action.type === 'delete' || action.type === 'complete') {
+                // Restore the deleted/completed item by adding it back
                 const restoredData = {
                     ...action.originalState,
-                    // Ensure we restore with the original ID
-                    id: action.todoId
+                    // Ensure we restore with the original ID and mark as incomplete
+                    id: action.todoId,
+                    completed: false
                 };
                 await this.handleAction('add', restoredData);
             }
@@ -411,6 +412,58 @@ function createTodoListComponent(element, data, config = {}) {
             this.log('INFO', `Todo deleted: ${id}`);
         } catch (error) {
             // Remove from undo system if delete failed
+            if (this.todoConfig.enableUndo) {
+                this.removeUndoAction(id);
+            }
+            this.handleError(error);
+        }
+    };
+
+    // Add complete action handler
+    todoList.handleCompleteItem = async function (id) {
+        console.log('DEBUG: TodoList handleCompleteItem called with id:', id);
+        const item = this.findItemById(id);
+        if (!item) {
+            console.log('DEBUG: Item not found');
+            return;
+        }
+
+        // Show confirmation dialog for completion
+        if (!window.MCPModal) {
+            // Fallback to native confirm if modal not available
+            const confirmMessage = `Mark "${item.text}" as complete? This will delete it from your list.`;
+            if (!confirm(confirmMessage)) return;
+        } else {
+            console.log('DEBUG: Creating complete confirmation modal');
+            const modalConfig = {
+                title: 'Complete Todo',
+                message: `Mark "${item.text}" as complete? This will delete it from your list.`,
+                confirmText: 'Complete',
+                cancelText: 'Cancel'
+            };
+            console.log('DEBUG: Modal config:', modalConfig);
+
+            const confirmed = await window.MCPModal.confirm(modalConfig);
+            console.log('DEBUG: Modal result:', confirmed);
+
+            if (!confirmed || confirmed.action !== 'confirm') {
+                console.log('DEBUG: Complete cancelled or failed');
+                return;
+            }
+            console.log('DEBUG: Complete confirmed, proceeding...');
+        }
+
+        if (this.todoConfig.enableUndo) {
+            // Add to undo system before completing
+            this.addUndoAction(id, 'complete', { ...item });
+        }
+
+        try {
+            // Call the backend to complete the todo
+            await this.handleAction('complete', { id });
+            this.log('INFO', `Todo completed: ${id}`);
+        } catch (error) {
+            // Remove from undo system if complete failed
             if (this.todoConfig.enableUndo) {
                 this.removeUndoAction(id);
             }
@@ -500,6 +553,8 @@ function createTodoListComponent(element, data, config = {}) {
         switch (action.type) {
             case 'delete':
                 return `"${action.originalState.text}" deleted`;
+            case 'complete':
+                return `"${action.originalState.text}" completed`;
             default:
                 return 'Action completed';
         }

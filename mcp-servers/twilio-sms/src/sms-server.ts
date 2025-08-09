@@ -397,7 +397,7 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
     // Log the payload being sent to LibreChat
     console.error('[SMS-SERVER] === Sending to LibreChat ===');
     console.error('[SMS-SERVER] URL:', url);
-    console.error('[SMS-SERVER] Payload:', JSON.stringify(payload, null, 2));
+    // console.error('[SMS-SERVER] Payload:', JSON.stringify(payload, null, 2));
 
     const headers = {
         'Content-Type': 'application/json',

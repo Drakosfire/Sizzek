@@ -10,6 +10,7 @@ import { TaskManager } from './core/task-manager.js';
 import { ScheduleValidator } from './core/schedule-validator.js';
 import { LibreChatClient } from './http/librechat-client.js';
 import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
+import { extractUserContext, validateUserAccess } from './utils/user-context.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -548,6 +549,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
     const { name, arguments: args } = request.params;
 
+    // Extract user context from LibreChat
+    const userContext = extractUserContext(request);
+
+    console.log(`[${name}] Request from user: ${userContext.userId}, effective: ${userContext.effectiveUserId}, shared: ${userContext.isSharedContext}`);
+
     if (!args) {
         throw new Error(`No arguments provided for tool: ${name}`);
     }
@@ -560,24 +566,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     description: args.description || undefined,
                     schedule: { type: "once", delayMinutes: args.delayMinutes },
                     message: args.message,
-                    enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                    enabled: args.enabled !== undefined ? args.enabled : undefined,
+                    sharedWith: args.sharedWith || []
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
                 return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `✅ Created scheduled task: "${task.name}"\n` +
-                                `ID: ${task.id}\n` +
-                                `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
-                                `Status: ${task.status}\n` +
-                                `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
-                                `Enabled: ${task.enabled}\n` +
-                                `Integration: ${librechatStatus}`
-                        }
-                    ]
+                    content: [{
+                        type: "text",
+                        text: `✅ Created scheduled task: "${task.name}"\n` +
+                            `ID: ${task.id}\n` +
+                            `Creator: ${task.creatorUserId}\n` +
+                            `Shared with: ${task.sharedWith?.join(', ') || 'None'}\n` +
+                            `Context: ${task.contextType}\n` +
+                            `Schedule: ${validator.generateHumanReadable(task.schedule)}\n` +
+                            `Status: ${task.status}\n` +
+                            `Next run: ${task.nextRun?.toISOString() || 'Not scheduled'}\n` +
+                            `Enabled: ${task.enabled}\n` +
+                            `Integration: ${librechatStatus}`
+                    }]
                 };
             } catch (error) {
                 console.error('Error creating scheduled task:', error);
@@ -592,7 +600,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     schedule: { type: "scheduled", datetime: args.datetime },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
@@ -623,7 +631,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     schedule: { type: "daily", time: args.time, weekdaysOnly: args.weekdaysOnly },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
@@ -654,7 +662,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     schedule: { type: "weekly", dayOfWeek: args.dayOfWeek, time: args.time },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
@@ -685,7 +693,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     schedule: { type: "monthly", dayOfMonth: args.dayOfMonth, time: args.time },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
@@ -716,7 +724,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     schedule: { type: "interval", every: args.every, unit: args.unit, startTime: args.startTime },
                     message: args.message,
                     enabled: args.enabled !== undefined ? args.enabled : undefined
-                });
+                }, userContext);
 
                 const librechatStatus = librechatClient ? 'LibreChat integration enabled' : 'LibreChat integration disabled (no API key)';
 
@@ -741,25 +749,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
         case "list_scheduled_tasks":
             try {
-                const tasks = taskManager.getAllTasks();
+                const allTasks = taskManager.getAllTasks();
 
-                if (tasks.length === 0) {
+                // Filter tasks based on user access
+                const accessibleTasks = allTasks.filter(task =>
+                    validateUserAccess(task, userContext)
+                );
+
+                if (accessibleTasks.length === 0) {
                     return {
-                        content: [
-                            {
-                                type: "text",
-                                text: 'No scheduled tasks found.'
-                            }
-                        ]
+                        content: [{
+                            type: "text",
+                            text: 'No scheduled tasks found.'
+                        }]
                     };
                 }
 
-                const taskList = tasks.map(task => {
+                const taskList = accessibleTasks.map(task => {
                     const status = task.enabled ? '✅' : '⏸️';
                     const nextRun = task.nextRun ? task.nextRun.toISOString() : 'Not scheduled';
                     const schedule = validator.generateHumanReadable(task.schedule);
-                    return `${status} ${task.name}\n` +
+                    const contextInfo = task.contextType === 'shared' ? ` (shared with ${task.sharedWith?.length || 0} users)` : '';
+                    return `${status} ${task.name}${contextInfo}\n` +
                         `   ID: ${task.id}\n` +
+                        `   Creator: ${task.creatorUserId}\n` +
+                        `   Context: ${task.contextType}\n` +
                         `   Schedule: ${schedule}\n` +
                         `   Status: ${task.status}\n` +
                         `   Next run: ${nextRun}\n` +
@@ -767,11 +781,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 }).join('\n\n');
 
                 return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `📋 Scheduled Tasks (${tasks.length}):\n\n${taskList}`
-                        }
+                    content: [{
+                        type: "text",
+                        text: `📋 Scheduled Tasks (${accessibleTasks.length}):\n\n${taskList}`
+                    }
                     ]
                 };
             } catch (error) {
@@ -787,11 +800,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                     throw new Error(`Task not found: ${args.taskId}`);
                 }
 
+                // Check user access
+                if (!validateUserAccess(task, userContext)) {
+                    throw new Error(`Access denied: You don't have permission to view this task`);
+                }
+
                 const schedule = validator.generateHumanReadable(task.schedule);
                 const details = `📄 Task Details:\n` +
                     `Name: ${task.name}\n` +
                     `ID: ${task.id}\n` +
                     `Description: ${task.description || 'None'}\n` +
+                    `Creator: ${task.creatorUserId}\n` +
+                    `Context: ${task.contextType}\n` +
+                    `Shared with: ${task.sharedWith?.join(', ') || 'None'}\n` +
                     `Schedule: ${schedule}\n` +
                     `Message: ${task.message}\n` +
                     `Status: ${task.status}\n` +
@@ -807,12 +828,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 const finalDetails = task.lastError ? `${details}\nLast error: ${task.lastError}` : details;
 
                 return {
-                    content: [
-                        {
-                            type: "text",
-                            text: finalDetails
-                        }
-                    ]
+                    content: [{
+                        type: "text",
+                        text: finalDetails
+                    }]
                 };
             } catch (error) {
                 console.error('Error getting scheduled task:', error);
@@ -913,7 +932,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
         case "get_web_ui":
             try {
-                const userId = args.userId || 'default';
+                const userId = args.userId || userContext.effectiveUserId || 'default';
                 return await webUIManager.handleGetWebUI(userId);
             } catch (error) {
                 console.error('Error getting web UI:', error);
@@ -923,7 +942,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         case "web_ui_update":
             try {
                 const { action, data } = args;
-                const result = await webUIManager['handleUIUpdate'](action, data);
+                const result = await webUIManager['handleUIUpdate'](action, data, userContext.effectiveUserId);
 
                 return {
                     content: [

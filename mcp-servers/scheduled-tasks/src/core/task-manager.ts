@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Task, TaskStatus, CreateTaskRequest, UpdateTaskRequest, TaskExecution, Schedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule } from '../types/index.js';
+import { Task, TaskStatus, CreateTaskRequest, UpdateTaskRequest, TaskExecution, Schedule, IntervalSchedule, DailySchedule, WeeklySchedule, MonthlySchedule, UserContext } from '../types/index.js';
 import { ScheduleValidator } from './schedule-validator.js';
 import { LibreChatClient } from '../http/librechat-client.js';
 import { TaskStorageManager } from '../storage/TaskStorageManager.js';
 import { TaskStorageManagerConfig } from '../types/storage.js';
 import { UserLookupService } from '../http/user-lookup.js';
+import { validateUserAccess } from '../utils/user-context.js';
 
 export class TaskManager {
     private tasks = new Map<string, Task>();
@@ -90,7 +91,14 @@ export class TaskManager {
         await this.taskStorageManager.saveTasks(tasks, this.userId);
     }
 
-    async createTask(request: CreateTaskRequest): Promise<Task> {
+    async createTask(request: CreateTaskRequest, userContext?: UserContext): Promise<Task> {
+        // Validate that we have creator context
+        // Use effectiveUserId for shared contexts, otherwise use userId
+        const creatorUserId = userContext?.effectiveUserId || request.creatorUserId;
+        if (!creatorUserId) {
+            throw new Error('Creator user ID is required for task creation');
+        }
+
         // Validate schedule
         const validation = this.validator.validate(request.schedule);
         if (!validation.isValid) {
@@ -113,7 +121,13 @@ export class TaskManager {
             failedRuns: 0,
             lastRun: undefined,
             nextRun: undefined,
-            lastError: undefined
+            lastError: undefined,
+
+            // NEW: User context
+            creatorUserId,
+            ...(userContext?.tenantId && { tenantId: userContext.tenantId }),
+            sharedWith: request.sharedWith || [],
+            contextType: (request.sharedWith && request.sharedWith.length > 0) ? 'shared' : 'user'
         };
 
         // Store task in memory and persist to storage
@@ -127,6 +141,9 @@ export class TaskManager {
 
         console.log(`✅ Created task: ${task.name} (${task.id})`);
         console.log(`📋 Schedule: ${this.validator.generateHumanReadable(task.schedule)}`);
+        console.log(`👤 Creator: ${task.creatorUserId}`);
+        console.log(`🔗 Shared with: ${task.sharedWith?.join(', ') || 'None'}`);
+        console.log(`📝 Context: ${task.contextType}`);
 
         if (validation.warnings.length > 0) {
             console.warn(`⚠️  Warnings: ${validation.warnings.join(', ')}`);
@@ -373,8 +390,9 @@ export class TaskManager {
                 task.status = TaskStatus.SCHEDULED;
                 await this.scheduleTask(task);
             } else {
-                // For one-time tasks, mark as completed and persist
-                await this.persistTasks();
+                // For one-time tasks, automatically delete them after successful completion
+                console.log(`🗑️ Auto-deleting completed one-time task: ${task.name}`);
+                await this.deleteTask(task.id);
             }
 
         } catch (error) {
@@ -402,7 +420,8 @@ export class TaskManager {
                 task.status = TaskStatus.SCHEDULED;
                 await this.scheduleTask(task);
             } else {
-                // For one-time tasks, persist the failed state
+                // For one-time tasks, keep failed tasks so users can see what went wrong
+                // They can be manually deleted if needed
                 await this.persistTasks();
             }
         } finally {
@@ -508,6 +527,25 @@ export class TaskManager {
 
     getTasksByStatus(status: TaskStatus): Task[] {
         return this.getAllTasks().filter(task => task.status === status);
+    }
+
+    /**
+ * Get tasks accessible by a user (creator or shared with them)
+ */
+    getTasksForUser(userContext: UserContext): Task[] {
+        return this.getAllTasks().filter(task => validateUserAccess(task, userContext));
+    }
+
+    /**
+     * Check if a user has access to a specific task
+     */
+    hasUserAccess(taskId: string, userContext: UserContext): boolean {
+        const task = this.getTask(taskId);
+        if (!task) {
+            return false;
+        }
+
+        return validateUserAccess(task, userContext);
     }
 
     /**

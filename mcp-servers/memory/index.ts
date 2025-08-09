@@ -9,7 +9,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { StorageFactory } from '@sizzek/mcp-data';
+import { StorageFactory } from 'mcp-data';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -117,8 +117,8 @@ class UserAwareKnowledgeGraphManager {
         const toEntities = await this.storage.searchEntities(effectiveUserId, relation.to);
 
         // Find exact matches by name
-        const fromEntity = fromEntities.find(e => e.name === relation.from);
-        const toEntity = toEntities.find(e => e.name === relation.to);
+        const fromEntity = fromEntities.find((e: any) => e.name === relation.from);
+        const toEntity = toEntities.find((e: any) => e.name === relation.to);
 
         if (!fromEntity) {
           log('WARN', `From entity not found: ${relation.from}. Skipping relation.`);
@@ -273,7 +273,7 @@ class UserAwareKnowledgeGraphManager {
 
         for (const entity of entities) {
           if (entity.name === deletion.entityName) {
-            entity.observations = entity.observations.filter(obs => !deletion.observations.includes(obs));
+            entity.observations = entity.observations.filter((obs: string) => !deletion.observations.includes(obs));
             entity.metadata = {
               ...entity.metadata!,
               updatedAt: new Date(),
@@ -315,12 +315,12 @@ class UserAwareKnowledgeGraphManager {
       const result = await this.storage.loadForUser(effectiveUserId);
 
       const legacyGraph: LegacyKnowledgeGraph = {
-        entities: result.entities.map(entity => ({
+        entities: result.entities.map((entity: any) => ({
           name: entity.name,
           entityType: entity.entityType,
           observations: entity.observations
         })),
-        relations: result.relations.map(relation => ({
+        relations: result.relations.map((relation: any) => ({
           from: relation.fromEntityId,
           to: relation.toEntityId,
           relationType: relation.relationType
@@ -352,12 +352,12 @@ class UserAwareKnowledgeGraphManager {
       }
 
       const result: LegacyKnowledgeGraph = {
-        entities: entities.map(entity => ({
+        entities: entities.map((entity: any) => ({
           name: entity.name,
           entityType: entity.entityType,
           observations: entity.observations
         })),
-        relations: relations.map(relation => ({
+        relations: relations.map((relation: any) => ({
           from: relation.fromEntityId,
           to: relation.toEntityId,
           relationType: relation.relationType
@@ -433,7 +433,7 @@ class UserAwareKnowledgeGraphManager {
         storageType: 'paginated-graph',
         entityCount: summary.totalEntities,
         relationCount: summary.totalRelations,
-        totalObservations: Object.values(summary.entityTypes).reduce((sum: number, count: number) => sum + count, 0)
+        totalObservations: Object.values(summary.entityTypes as Record<string, number>).reduce((sum: number, count: number) => sum + count, 0)
       };
       log('INFO', `Retrieved user stats for: ${effectiveUserId}`, stats);
       return stats;

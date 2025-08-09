@@ -14,6 +14,12 @@ export interface Task {
     successfulRuns: number;
     failedRuns: number;
     lastError: string | undefined;
+
+    // NEW: User context and sharing
+    creatorUserId: string;              // Who created this task
+    tenantId?: string;                  // Multi-tenant isolation (future)
+    sharedWith: string[];               // Array of user IDs who can access this task
+    contextType: 'user' | 'shared';    // Type of context (extensible for groups later)
 }
 
 export enum TaskStatus {
@@ -89,6 +95,10 @@ export interface CreateTaskRequest {
     schedule: Schedule;
     message: string;
     enabled: boolean | undefined;
+
+    // NEW: Context information
+    creatorUserId?: string;             // Will be extracted from request
+    sharedWith?: string[];              // Optional sharing
 }
 
 export interface UpdateTaskRequest {
@@ -104,4 +114,14 @@ export interface ValidationResult {
     errors: string[];
     warnings: string[];
     suggestion?: string;
+}
+
+// NEW: User context interfaces
+export interface UserContext {
+    userId: string;
+    tenantId?: string;
+    originalUserId?: string;        // For shared contexts
+    sharedWith?: string[];          // Who has access
+    isSharedContext: boolean;       // Whether this is a shared operation
+    effectiveUserId: string;        // The user ID to use for data operations
 } 

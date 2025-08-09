@@ -84,7 +84,10 @@ async function createTestData() {
             totalRuns: 5,
             successfulRuns: 5,
             failedRuns: 0,
-            lastError: undefined
+            lastError: undefined,
+            creatorUserId: 'backup-cli-user',
+            sharedWith: [],
+            contextType: 'user'
         },
         {
             id: uuidv4(),
@@ -101,7 +104,10 @@ async function createTestData() {
             totalRuns: 2,
             successfulRuns: 1,
             failedRuns: 1,
-            lastError: 'Network timeout'
+            lastError: 'Network timeout',
+            creatorUserId: 'backup-cli-user',
+            sharedWith: ['team-member-1'],
+            contextType: 'shared'
         },
         {
             id: uuidv4(),
@@ -118,7 +124,10 @@ async function createTestData() {
             totalRuns: 0,
             successfulRuns: 0,
             failedRuns: 0,
-            lastError: undefined
+            lastError: undefined,
+            creatorUserId: 'backup-cli-user',
+            sharedWith: [],
+            contextType: 'user'
         },
         {
             id: uuidv4(),
@@ -135,7 +144,10 @@ async function createTestData() {
             totalRuns: 96, // 24 hours * 4 checks per hour
             successfulRuns: 94,
             failedRuns: 2,
-            lastError: undefined
+            lastError: undefined,
+            creatorUserId: 'backup-cli-user',
+            sharedWith: [],
+            contextType: 'user'
         }
     ];
 
@@ -311,7 +323,10 @@ async function testCorruptionRecovery() {
             totalRuns: 0,
             successfulRuns: 0,
             failedRuns: 0,
-            lastError: undefined
+            lastError: undefined,
+            creatorUserId: 'backup-cli-user',
+            sharedWith: [],
+            contextType: 'user'
         }
     ];
 
@@ -374,7 +389,10 @@ async function stressTest() {
             totalRuns: Math.floor(Math.random() * 100),
             successfulRuns: Math.floor(Math.random() * 80),
             failedRuns: Math.floor(Math.random() * 20),
-            lastError: i % 10 === 0 ? 'Test error' : undefined
+            lastError: i % 10 === 0 ? 'Test error' : undefined,
+            creatorUserId: 'stress-test-user',
+            sharedWith: i % 5 === 0 ? ['shared-user'] : [],
+            contextType: i % 5 === 0 ? 'shared' : 'user'
         });
     }
 
