@@ -65,9 +65,6 @@ mcpServers:
       - "../Sizzek/mcp-servers/memory/dist/index.js"
     timeout: 30000
     initTimeout: 10000
-    env:
-        # NODE_ENV: "production"
-        MEMORY_FILE_PATH: "../Sizzek/memory_files/memory.json"
     stderr: inherit
 
   todoodles:
@@ -102,7 +99,25 @@ mcpServers:
     type: stdio
     command: node
     args:
-      - "../Sizzek/mcp-servers/scheduled-tasks/dist/index.js"
+      - "../Sizzek/mcp-servers/scheduled-tasks/dist/src/index.js"
+    timeout: 30000
+    initTimeout: 10000
+    stderr: inherit
+  
+  grocery-list:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/grocery-list/dist/index.js"
+    timeout: 30000
+    initTimeout: 10000
+    stderr: inherit
+
+  movies:
+    type: stdio
+    command: node
+    args:
+      - "../Sizzek/mcp-servers/movies/dist/index.js"
     timeout: 30000
     initTimeout: 10000
     stderr: inherit
