@@ -35,11 +35,16 @@ build_server() {
   echo "\n==== Building $dir ===="
   pushd "$path" > /dev/null
 
-  # Prefer npm ci if lock exists
+  # Install dependencies (prefer ci, fallback to install)
   if [[ -f package-lock.json ]]; then
-    npm ci || npm install
+    npm ci || npm install --include=dev
   else
-    npm install
+    npm install --include=dev
+  fi
+
+  # Quick sanity check for known invalid deps
+  if grep -q '"mcp-data"\s*:\s*"mcp-data"' package.json 2>/dev/null; then
+    echo "[WARN] $dir has invalid dependency entry mcp-data@mcp-data. Please set to a valid version or file:path."
   fi
 
   # Determine build script
@@ -54,6 +59,7 @@ build_server() {
   popd > /dev/null
 }
 
+echo "Installing and building all MCP servers..."
 for s in "${SERVERS[@]}"; do
   build_server "$s"
 done
