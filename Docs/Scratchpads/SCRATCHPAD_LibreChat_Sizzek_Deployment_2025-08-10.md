@@ -14,7 +14,7 @@
 - Goal: Deploy a Hybrid Separation architecture using shared infra (Traefik, MongoDB, Redis, Prom/Grafana) and independent stacks for LibreChat and Sizzek.
 - Primary users: platform admin, invited users (initially), future public users.
 - Success criteria:
-  - [ ] Public HTTPS endpoints for `chat.<domain>`, `sizzek.<domain>`, `admin.<domain>`
+  - [X] Public HTTPS endpoints for `chat.<domain>`, `sizzek.<domain>`, `admin.<domain>`
   - [ ] Stacks deployable/rollback via scripts
   - [ ] Health checks green; monitoring dashboards accessible
   - [ ] Invite-only or controlled onboarding live
@@ -115,6 +115,7 @@
   - [ ] Bring up Traefik, MongoDB, Redis, Prometheus, Grafana
   - [ ] DNS and TLS certificates issued
 - M2: LibreChat + Sizzek Stack
+  - [X] Nginx proxy configured: `https://sizzek.dungeonmind.net` → `127.0.0.1:3080` (LibreChat)
   - [ ] Build Sizzek image; compose up
   - [ ] Wire LibreChat envs; health 200
   - [ ] Traefik routes and headers configured
@@ -132,6 +133,7 @@
 ## 13) Validation Checklist (Acceptance)
 - [ ] All containers healthy; expected ports routed via Traefik
 - [ ] `https://chat.<domain>` accessible; login works for created user
+- [X] `https://sizzek.<domain>` serves LibreChat UI
 - [ ] `https://sizzek.<domain>/health` 200
 - [ ] Admin dashboards reachable and secured
 - [ ] SSL certs valid; auto-renew in place
@@ -151,3 +153,48 @@
 ### Notes & References
 - Source guide: `Sizzek/LibreChat_Sizzek_Deployment_Guide.md`
 - Consider future Strategy 2/3 once usage grows (isolation/unified stack)
+
+## 15) Progress Log
+
+- 2025-08-10
+  - Configured Nginx to proxy `sizzek.dungeonmind.net` (HTTPS) to LibreChat at `http://127.0.0.1:3080`.
+  - Kept the default `server { listen 80 default_server; }` block generic (no proxy) to avoid exposing LibreChat on all hostnames.
+  - Validated public access: `curl https://sizzek.dungeonmind.net` returns LibreChat UI. `/api/health` via public path currently returns 404; health check to be addressed later.
+  - Commands used:
+
+```bash
+sudo cp /etc/nginx/sites-available/default /etc/nginx/sites-available/default.bak.$(date +%F-%H%M%S)
+sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX_CONF'
+# ... default 80 server with try_files ...
+server {
+    root /var/www/html;
+    index index.html index.htm index.nginx-debian.html;
+    server_name sizzek.dungeonmind.net;
+
+    location / {
+        proxy_pass http://127.0.0.1:3080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+        proxy_buffering off;
+        client_max_body_size 25m;
+    }
+
+    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+    listen 443 ssl;                  # managed by Certbot
+    ssl_certificate     /etc/letsencrypt/live/sizzek.dungeonmind.net/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sizzek.dungeonmind.net/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+NGINX_CONF
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+  - Next: create LibreChat admin user, decide registration gating, and expose a link from `dungeonmind.net` to `sizzek.dungeonmind.net`.
