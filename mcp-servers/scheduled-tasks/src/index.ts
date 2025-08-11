@@ -14,20 +14,52 @@ import { extractUserContext, validateUserAccess } from './utils/user-context.js'
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables from .env file
-// When compiled, __dirname will be 'dist/src/', so we need to go up two levels to reach project root
-const envPath = path.resolve(__dirname, '..', '..', '.env');
-console.error('Loading .env file from:', envPath);
+// Generic, overrideable env loader
+function loadEnv(serverLabel: string) {
+    const candidates: string[] = [];
+    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    const dirCandidates = [
+        path.resolve(__dirname, '..', '..'), // compiled dist/src -> project root
+        path.resolve(__dirname, '..'),
+    ];
+    const fileCandidates = [
+        '.env.local',
+        '.env',
+        process.env.NODE_ENV === 'production' ? '.env.production' : undefined,
+    ].filter(Boolean) as string[];
+    for (const dir of dirCandidates) {
+        for (const file of fileCandidates) {
+            candidates.push(path.join(dir, file));
+        }
+    }
 
-// Check if .env file exists synchronously
-console.error('File exists:', existsSync(envPath));
-dotenv.config({ path: envPath });
+    let usedPath: string | undefined;
+    for (const p of candidates) {
+        if (existsSync(p)) {
+            dotenv.config({ path: p, override: true });
+            usedPath = usedPath || p;
+        }
+    }
+    if (!usedPath) dotenv.config();
+
+    // Back-compat for URI naming
+    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
+        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    }
+    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
+        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    }
+
+    console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'}`);
+}
+
+loadEnv('Scheduled-Tasks');
 
 // Environment variables validation
 const LIBRECHAT_ENDPOINT = process.env.LIBRECHAT_ENDPOINT || 'http://localhost:3080';

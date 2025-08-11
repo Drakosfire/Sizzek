@@ -8,6 +8,8 @@ import { OAuth2Client } from "google-auth-library";
 import { fileURLToPath } from "url";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
+import dotenv from 'dotenv';
+import fs from 'fs';
 
 // Import modular components
 import { initializeOAuth2Client } from './auth/client.js';
@@ -22,6 +24,26 @@ const __dirname = dirname(__filename);
 const packageJsonPath = join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const VERSION = packageJson.version;
+
+// Load environment variables early (overrideable via ENV_PATH)
+(() => {
+  const __dirnameLocal = dirname(__filename);
+  const candidates: string[] = [];
+  if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+  const dirCandidates = [join(__dirnameLocal, '..'), join(__dirnameLocal, '..', '..')];
+  const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
+  for (const d of dirCandidates) for (const f of fileCandidates) candidates.push(join(d, f));
+  let used: string | undefined;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p, override: true });
+      used = used || p;
+    }
+  }
+  if (!used) dotenv.config();
+  const creds = process.env.GOOGLE_OAUTH_CREDENTIALS ? '[SET]' : '[NOT_SET]';
+  console.error(`[google-calendar-mcp] Env loaded: ${used || '(default)'} | GOOGLE_OAUTH_CREDENTIALS=${creds}`);
+})();
 
 // --- Global Variables --- 
 // Create server instance (global for export)

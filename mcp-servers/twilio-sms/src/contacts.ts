@@ -7,9 +7,28 @@ import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables from the same .env file as the SMS server
-const envPath = path.resolve(__dirname, '..', '.env');
-dotenv.config({ path: envPath });
+// Generic, overrideable env loader (keep in sync with server)
+import fs from 'fs';
+function loadEnv() {
+    const candidates: string[] = [];
+    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
+    const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
+    for (const dir of dirCandidates) {
+        for (const file of fileCandidates) {
+            candidates.push(path.join(dir, file));
+        }
+    }
+    let used: string | undefined;
+    for (const p of candidates) {
+        if (fs.existsSync(p)) {
+            dotenv.config({ path: p, override: true });
+            used = used || p;
+        }
+    }
+    if (!used) dotenv.config();
+}
+loadEnv();
 
 // Agent Configuration
 const AGENT_ID = process.env.LIBRECHAT_AGENT_ID || 'agent_G5HmZ0jJtfPMXIykL81Nx'; // Default from docs

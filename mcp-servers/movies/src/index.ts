@@ -19,10 +19,46 @@ import { createMovieWebUI } from './web-ui/movie-ui-factory.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables from .env file with explicit path
-const envPath = path.resolve(__dirname, '..', '.env');
-console.error(`[Movies] Loading .env file from: ${envPath}`);
-dotenv.config({ path: envPath });
+// Generic, overrideable env loader
+function loadEnv(serverLabel: string) {
+    const candidates: string[] = [];
+    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
+    const fileCandidates = [
+        '.env.local',
+        '.env',
+        process.env.NODE_ENV === 'production' ? '.env.production' : undefined,
+    ].filter(Boolean) as string[];
+    for (const dir of dirCandidates) {
+        for (const file of fileCandidates) {
+            candidates.push(path.join(dir, file));
+        }
+    }
+
+    let usedPath: string | undefined;
+    for (const p of candidates) {
+        if (fs.existsSync(p)) {
+            dotenv.config({ path: p, override: true });
+            usedPath = usedPath || p;
+        }
+    }
+    if (!usedPath) dotenv.config();
+
+    // Normalize Mongo env vars for cross-compat
+    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
+        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    }
+    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
+        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    }
+
+    const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
+    const db = process.env.MONGODB_DATABASE || '';
+    const coll = process.env.MONGODB_COLLECTION || process.env.MONGODB_COLLECTION_PREFIX || '';
+    console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'} | DB=${db} | Collection=${coll} | URI=${uri ? '[SET]' : '[NOT_SET]'}`);
+}
+
+loadEnv('Movies');
 
 // Enhanced logging function
 function log(level: string = 'INFO', message: string, data?: any) {

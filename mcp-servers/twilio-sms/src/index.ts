@@ -10,6 +10,7 @@ import twilio from 'twilio';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { fork } from 'child_process';
 import { ContactManager, ContactLookupService } from './contacts.js';
 
@@ -17,10 +18,36 @@ import { ContactManager, ContactLookupService } from './contacts.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables from .env file
-const envPath = path.resolve(__dirname, '..', '.env');
-console.error('Loading .env file from:', envPath);
-dotenv.config({ path: envPath });
+// Generic, overrideable env loader
+function loadEnv(serverLabel: string) {
+    const candidates: string[] = [];
+    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
+    const fileCandidates = [
+        '.env.local',
+        '.env',
+        process.env.NODE_ENV === 'production' ? '.env.production' : undefined,
+    ].filter(Boolean) as string[];
+    for (const dir of dirCandidates) {
+        for (const file of fileCandidates) {
+            candidates.push(path.join(dir, file));
+        }
+    }
+
+    let usedPath: string | undefined;
+    for (const p of candidates) {
+        if (fs.existsSync(p)) {
+            dotenv.config({ path: p, override: true });
+            usedPath = usedPath || p;
+        }
+    }
+    if (!usedPath) dotenv.config();
+
+    const masked = (val?: string) => (val ? '✓ Set' : '✗ Not set');
+    console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'} | TWILIO_ACCOUNT_SID: ${masked(process.env.TWILIO_ACCOUNT_SID)} | TWILIO_AUTH_TOKEN: ${masked(process.env.TWILIO_AUTH_TOKEN)}`);
+}
+
+loadEnv('TwilioSMS');
 
 // Environment variables validation
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
