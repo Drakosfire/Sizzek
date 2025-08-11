@@ -31,8 +31,8 @@
     "license": "MIT",
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.11.1",
-        "mcp-data": "file:../../../mcp-data-standalone",
-        "mcp-web-ui": "file:../../../mcp-web-ui-standalone",
+        "mcp-data": "^1.0.1",
+        "mcp-web-ui": "^1.0.5",
         "dotenv": "^16.5.0"
     },
     "devDependencies": {

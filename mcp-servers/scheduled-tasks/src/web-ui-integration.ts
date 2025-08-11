@@ -1,5 +1,4 @@
-import { MCPWebUI } from '/media/drakosfire/Projects/mcp-web-ui-standalone/dist/index.js';
-import { UISchema, DataSourceFunction, UpdateHandler } from '/media/drakosfire/Projects/mcp-web-ui-standalone/dist/types/index.js';
+import { MCPWebUI, UISchema } from 'mcp-web-ui';
 import { Task, TaskStatus } from './types/index.js';
 import { TaskManager } from './core/task-manager.js';
 import { ScheduleValidator } from './core/schedule-validator.js';
@@ -27,9 +26,9 @@ export class ScheduledTasksWebUIManager {
         const schema = this.createScheduledTasksUISchema();
 
         this.webUI = new MCPWebUI<TaskDisplayData>({
-            dataSource: this.getDataSource.bind(this) as DataSourceFunction<TaskDisplayData>,
+            dataSource: this.getDataSource.bind(this) as any,
             schema,
-            onUpdate: this.handleUIUpdate.bind(this) as UpdateHandler,
+            onUpdate: this.handleUIUpdate.bind(this) as any,
             sessionTimeout: 30 * 60 * 1000, // 30 minutes
             pollInterval: 5000, // 5 seconds
             enableLogging: this.enableLogging

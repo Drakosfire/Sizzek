@@ -16,8 +16,8 @@
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.0",
         "dotenv": "^16.4.5",
-        "mcp-data": "file:../../../mcp-data-standalone",
-        "mcp-web-ui": "file:../../../mcp-web-ui-standalone"
+        "mcp-data": "^1.0.1",
+        "mcp-web-ui": "^1.0.5"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

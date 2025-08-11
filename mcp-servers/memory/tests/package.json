@@ -22,7 +22,7 @@
         "lint:fix": "eslint . --fix"
     },
     "dependencies": {
-        "@sizzek/mcp-data": "file:../../../mcp-data",
+        "mcp-data": "^1.0.1",
         "dotenv": "^16.3.1",
         "mongodb": "^6.0.0"
     },
