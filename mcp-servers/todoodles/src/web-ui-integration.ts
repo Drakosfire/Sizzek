@@ -37,7 +37,8 @@ export class TodoodlesWebUIManager {
             enableLogging: this.enableLogging,
             baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost',
             // Explicit CSS path for todoodles
-            cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static'
+            cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static',
+            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '11000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '12000')]
         });
 
         this.log('INFO', 'TodoodlesWebUIManager initialized');

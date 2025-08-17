@@ -16,7 +16,7 @@ A practical, opinionated guide for designing, implementing, and testing Model Co
 - Transport
   - stdio via `@modelcontextprotocol/sdk` with graceful shutdown on SIGINT/SIGTERM
 - Environment
-  - `.env` loaded with explicit path; validate required vars; never log secrets
+  - Unified env loader: support `ENV_PATH` override; otherwise search `.env.local`, `.env`, and `.env.production` (when `NODE_ENV=production`) from the project root and one level up. Validate required vars; never log secrets. Mask credentials in startup logs and print the env file path used.
   - Core envs: `MCP_STORAGE_TYPE`, `MCP_USER_BASED`, `MCP_USER_ID`, backend creds if any
 - Logging
   - Timestamped, service-tagged logs; debug gated by `MCP_DEBUG`
@@ -31,6 +31,7 @@ Minimal skeleton (TypeScript/ESM):
 ```ts
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -38,7 +39,37 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+
+// Unified env loader: ENV_PATH > .env.local > .env > .env.production
+function loadEnv(serviceLabel: string) {
+  const candidates: string[] = [];
+  if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+  const dirs = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
+  const files = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
+  for (const d of dirs) for (const f of files) candidates.push(path.join(d, f));
+
+  let used: string | undefined;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p, override: true });
+      used = used || p;
+    }
+  }
+  if (!used) dotenv.config();
+
+  // Normalize Mongo env names so either works
+  if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
+    process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+  }
+  if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
+    process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+  }
+
+  const maskedUri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
+  console.error(`[${serviceLabel}] Env loaded: ${used || '(default)'} | MONGODB_URI: ${maskedUri ? '[SET]' : '[NOT_SET]'}`);
+}
+
+loadEnv('my-mcp');
 
 function log(level: 'INFO'|'DEBUG'|'WARN'|'ERROR', msg: string, data?: any) {
   const ts = new Date().toISOString();

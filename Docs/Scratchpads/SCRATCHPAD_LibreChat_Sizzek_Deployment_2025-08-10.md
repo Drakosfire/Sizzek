@@ -198,3 +198,111 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
   - Next: create LibreChat admin user, decide registration gating, and expose a link from `dungeonmind.net` to `sizzek.dungeonmind.net`.
+
+- 2025-08-11
+  - Standardized MCP server environment loading and remote secrets deployment.
+    - Generic dotenv loader added to: `mcp-servers/{memory,movies,grocery-list,todoodles,scheduled-tasks,twilio-sms,google-calendar-mcp}` entry files.
+    - Load order: `ENV_PATH` (if set) → `.env.local` → `.env` → `.env.production` (when `NODE_ENV=production`).
+    - Normalized Mongo vars so either `MONGODB_URI` or `MONGODB_CONNECTION_STRING` is accepted; both are set when only one exists.
+    - Startup logs now mask credentials and print the resolved env file path.
+  - Remote secrets procedure
+    - Local staging: `Sizzek/secrets-deploy/<server>/.env`
+    - Sync: `rsync -av --rsync-path="mkdir -p ~/projects/Sizzek/mcp-servers && rsync" ./secrets-deploy/ alan@srv586875:~/projects/Sizzek/mcp-servers/`
+    - Harden: `ssh alan@srv586875 'find ~/projects/Sizzek/mcp-servers -maxdepth 2 -name ".env" -exec chmod 600 {} +'`
+    - Runtime: set service working directory to each server folder so `.env` is found, or pass `ENV_PATH=/home/alan/projects/Sizzek/mcp-servers/<server>/.env`.
+  - Fixed DNS error `getaddrinfo EAI_AGAIN mongodb`
+    - Root cause: a process running with `mongodb://mongodb:27017` host from an old config.
+    - Resolution: ensure all `.env` files use `mongodb://srv586875:27017/?directConnection=true` and redeploy; restart processes.
+    - Memory MCP was using JSON storage; switched to Mongo: `MCP_STORAGE_TYPE=mongodb` in `memory/.env` and restarted.
+  - Expected env per MCP server (DB/collections)
+    - `memory`: `MONGODB_DATABASE=mcp_data`, `MONGODB_COLLECTION=user_memory`
+    - `movies`: `MONGODB_DATABASE=mcp_data`, `MONGODB_COLLECTION=user_movies`
+    - `grocery-list`: `MONGODB_DATABASE=mcp_data`, `MONGODB_COLLECTION=user_grocery_data`
+    - `todoodles`: `MONGODB_DATABASE=mcp_data`, `MONGODB_COLLECTION=user_todoodles`
+    - `scheduled-tasks`: `MONGODB_DATABASE=LibreChat`, `MONGODB_COLLECTION=scheduled_tasks`
+    - `twilio-sms`: `MONGODB_COLLECTION=users` (LibreChat users; DB as designed)
+    - `google-calendar-mcp`: uses dotenv as well; add `GOOGLE_OAUTH_CREDENTIALS`/token vars per its README
+  - Quick verification after restart
+    - Print env in runtime: `printenv | grep -E '^MONGODB_|^TWILIO_|^GOOGLE_'`
+    - Sanity check values:
+      ```bash
+      node -e "console.log(process.env.MONGODB_URI||process.env.MONGODB_CONNECTION_STRING, process.env.MONGODB_DATABASE, process.env.MONGODB_COLLECTION||process.env.MONGODB_COLLECTION_PREFIX)"
+      ```
+    - DB collections/counts (requires mongosh):
+      ```bash
+      mongosh "$MONGODB_CONNECTION_STRING/$MONGODB_DATABASE" --eval "db.getCollectionNames().forEach(c=>print(c, db[c].countDocuments()))"
+      ```
+  - Notes
+    - Keep provider secrets (TWILIO_*, GOOGLE_*, API keys) only in remote `.env` files; never commit.
+    - If using docker-compose, ensure each service has `env_file: .env` in its context directory.
+
+- 2025-08-17
+  - **CRITICAL: LibreChat MongoDB Container Dependency**
+    - **Issue**: LibreChat failing with `ECONNREFUSED ::1:27017, connect ECONNREFUSED 127.0.0.1:27017`
+    - **Root Cause**: LibreChat expects MongoDB container (`chat-mongodb`) to be running, but it was stopped
+    - **Solution**: Start required containers before running LibreChat
+    - **Quick Fix**: `cd ~/projects/External-Endpoint && docker-compose up -d mongodb`
+    - **Full Fix**: `cd ~/projects/External-Endpoint && docker-compose up -d mongodb meilisearch vectordb`
+    - **Verification**: `docker-compose ps` to ensure all containers are running
+    - **Connection String**: LibreChat expects `mongodb://localhost:27017/LibreChat` when running outside Docker
+    - **Container Dependencies**: LibreChat requires `chat-mongodb`, `chat-meilisearch`, `vectordb`, and `rag_api` containers
+    - **Troubleshooting Step**: Always check `docker-compose ps` first when LibreChat fails to start
+    - **Documentation Need**: Add this to ongoing support documentation and troubleshooting guide
+
+- 2025-08-17 (Continued)
+  - **✅ MongoDB Migration Completed Successfully**
+    - **Migration Method**: Direct export/import using `mongodump`/`mongorestore`
+    - **Data Migrated**: LibreChat (12 users, 1565 conversations, 2872 messages), mcp_data (45 memory entities, 13 groceries, 3 todoodles, 2 scheduled tasks, 1 movie), config, debug_todoodles
+    - **Target**: Remote server `alan@srv586875` running `chat-mongodb` container
+    - **Verification**: All data verified with matching document counts
+    - **Script Created**: `scripts/migrate-to-server.sh` for future migrations
+
+  - **✅ MCP Environment Management System Implemented**
+    - **Problem**: Multiple MCP servers had inconsistent `.env` configurations and manual management was error-prone
+    - **Solution**: Created centralized deployment script `scripts/deploy-mcp-envs.sh`
+    - **Process**: Automatically copies all `.env` files from local `./mcp-servers/` to remote server
+    - **Coverage**: Deploys 8 `.env` files (todoodles, twilio-sms, google-calendar-mcp, movies, grocery-list, scheduled-tasks, memory)
+    - **Benefits**: Eliminates configuration drift, ensures consistent MongoDB connection strings, automated deployment
+    - **Integration**: Added to `scripts/build-all-mcps.sh` for automatic deployment during builds
+    - **Verification**: All `.env` files verified on remote server after deployment
+
+  - **✅ Todoodles MCP Database Access Fixed**
+    - **Issue**: Todoodles MCP was returning 0 todos despite data being in MongoDB
+    - **Root Cause**: MCP server `.env` configuration was using wrong storage type or connection string
+    - **Solution**: Deployed updated `.env` files using new centralized deployment system
+    - **Result**: Todoodles MCP now successfully accesses MongoDB data
+    - **Verification**: User can see their todoodles data in LibreChat interface
+
+  - **📋 Next Priority: Web UI Ephemeral Pages**
+    - **Goal**: Enable MCP servers to serve web UI pages for enhanced user interaction
+    - **Current State**: MCP servers can access data but lack web interface capabilities
+    - **Requirements**: 
+      - Configure nginx to serve static files from MCP server directories
+      - Set up routing for ephemeral web pages
+      - Ensure proper security and access controls
+      - Test with existing MCP servers (todoodles, grocery-list, etc.)
+    - **Technical Approach**: 
+      - Extend nginx configuration to handle `/mcp/*` routes
+      - Create static file serving for MCP web UIs
+      - Implement proper URL routing and security headers
+    - **Success Criteria**: Users can access web interfaces for MCP functionality via browser
+
+- 2025-08-17 Continued
+  - **Web UI Ephemeral Pages - Implementation Completed**
+    - **Architecture**: Dynamic port allocation (11000-12000 range), multi-tenant security, direct access
+    - **URL Structure**: `https://sizzek.dungeonmind.net:{random-port}/?token={uuid}` (e.g., `https://sizzek.dungeonmind.net:37949/?token=9049f179-0cbd-4729-97aa-9513654d4312`)
+    - **Security**: Token-based authentication with 30-minute expiration, session isolation
+    - **Firewall**: Opened ports 11000-12000/tcp for ephemeral web UI access
+    - **Fix Applied**: Updated `MCP_WEB_UI_BASE_URL` from internal IP to public domain
+    - **Next Steps**: Implement rate limiting and monitoring for production security
+
+- 2025-08-17 Continued
+  - **Security Considerations for Ephemeral Web UIs**
+    - **Current Measures**: Token auth, session isolation, 30-min expiration, port range limitation
+    - **Recommended Additions**:
+      - **Rate Limiting**: Implement per-IP rate limiting on ephemeral ports
+      - **Monitoring**: Log access attempts and failed token validations
+      - **Port Scanning Protection**: Monitor for port scanning attempts
+      - **Session Cleanup**: Ensure expired sessions are properly cleaned up
+    - **Firewall Rules**: Ports 11000-12000/tcp opened for ephemeral web UI access
+    - **Security Status**: Good baseline, needs monitoring and rate limiting for production

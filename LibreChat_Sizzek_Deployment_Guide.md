@@ -2312,6 +2312,61 @@ docker exec shared-mongodb mongosh --eval 'db.getUsers()'
 docker exec librechat-app mongosh "mongodb://librechat_user:password@shared-mongodb:27017/LibreChat"
 ```
 
+#### **LibreChat MongoDB Container Dependency Issues**
+```bash
+# CRITICAL: LibreChat failing with ECONNREFUSED 127.0.0.1:27017
+# Root Cause: MongoDB container not running when LibreChat starts
+
+# Quick Fix: Start required containers
+cd ~/projects/External-Endpoint
+docker-compose up -d mongodb meilisearch vectordb
+
+# Verify all containers are running
+docker-compose ps
+
+# Check LibreChat connection string
+# When running outside Docker: mongodb://localhost:27017/LibreChat
+# When running in Docker: mongodb://mongodb:27017/LibreChat
+
+# Required container dependencies for LibreChat:
+# - chat-mongodb (MongoDB)
+# - chat-meilisearch (Meilisearch)
+# - vectordb (PostgreSQL with pgvector)
+# - rag_api (LibreChat RAG API)
+
+# Always check container status first when LibreChat fails to start
+```
+
+#### **MCP Environment Management Issues**
+```bash
+# Problem: MCP servers have inconsistent .env configurations
+# Solution: Use centralized deployment script
+
+# Deploy all MCP .env files to remote server
+./scripts/deploy-mcp-envs.sh
+
+# Manual deployment (if needed)
+scp ./mcp-servers/todoodles/.env alan@srv586875:~/projects/Sizzek/mcp-servers/todoodles/
+
+# Verify deployment
+ssh alan@srv586875 "find ~/projects/Sizzek/mcp-servers -name '.env' -exec ls -la {} \;"
+
+# Check MCP server environment variables
+ssh alan@srv586875 "cd ~/projects/Sizzek/mcp-servers/todoodles && printenv | grep -E '^MONGODB_|^MCP_STORAGE_TYPE'"
+
+# Restart MCP servers after .env changes
+ssh alan@srv586875 "cd ~/projects/Sizzek/mcp-servers/todoodles && npm restart"
+
+# Expected MCP server configurations:
+# - memory: MONGODB_DATABASE=mcp_data, MONGODB_COLLECTION=user_memory
+# - movies: MONGODB_DATABASE=mcp_data, MONGODB_COLLECTION=user_movies
+# - grocery-list: MONGODB_DATABASE=mcp_data, MONGODB_COLLECTION=user_groceries
+# - todoodles: MONGODB_DATABASE=mcp_data, MONGODB_COLLECTION=user_todoodles
+# - scheduled-tasks: MONGODB_DATABASE=LibreChat, MONGODB_COLLECTION=scheduled_tasks
+# - twilio-sms: MONGODB_DATABASE=LibreChat, MONGODB_COLLECTION=users
+```
+```
+
 #### **SSL/Domain Issues**
 ```bash
 # Check Traefik configuration
@@ -2336,6 +2391,203 @@ docker exec shared-mongodb mongosh --eval 'db.serverStatus()'
 # Check Redis memory usage
 docker exec shared-redis redis-cli -a password info memory
 ```
+
+---
+
+## 🔧 **MCP Environment Management**
+
+### **Overview**
+
+The MCP (Model Context Protocol) servers require consistent environment configuration across all instances. This section covers the centralized environment management system that ensures all MCP servers use the correct MongoDB connection strings and storage configurations.
+
+## 🔒 **MCP Ephemeral Web UI Security**
+
+### **Overview**
+
+The MCP ephemeral web UI system provides secure, temporary web interfaces for MCP server functionality. This section covers the security measures and monitoring for the ephemeral web UI system.
+
+### **Security Architecture**
+
+#### **Current Security Measures**
+
+- **Token-Based Authentication**: Each ephemeral web UI uses a unique UUID token
+- **Session Isolation**: Each user gets their own isolated session with 30-minute expiration
+- **Multi-Tenant Architecture**: Users cannot access each other's data
+- **Port Range Limitation**: Ephemeral UIs use ports 11000-12000 (1000 ports)
+- **Temporary Nature**: Ephemeral UIs are designed to be temporary
+
+#### **Firewall Configuration**
+
+```bash
+# Open port range for ephemeral web UIs
+sudo ufw allow 11000:12000/tcp
+
+# Verify the rule is active
+sudo ufw status | grep "11000:12000"
+```
+
+#### **Security Monitoring**
+
+```bash
+# Run security monitoring script
+./scripts/monitor-ephemeral-ports.sh
+
+# Set up automated monitoring (add to crontab)
+# Run every 5 minutes
+*/5 * * * * /path/to/scripts/monitor-ephemeral-ports.sh
+```
+
+#### **Recommended Security Enhancements**
+
+1. **Rate Limiting**: Implement per-IP rate limiting on ephemeral ports
+2. **Access Logging**: Monitor access attempts and failed token validations
+3. **Port Scanning Protection**: Monitor for port scanning attempts
+4. **Session Cleanup**: Ensure expired sessions are properly cleaned up
+5. **Alert System**: Set up email alerts for suspicious activity
+
+### **URL Structure**
+
+Ephemeral web UIs are accessed via:
+```
+https://sizzek.dungeonmind.net:{random-port}/?token={uuid}
+```
+
+Example: `https://sizzek.dungeonmind.net:11889/?token=80f28135-0253-41f5-a5d8-8d1f34e344d1`
+
+### **Troubleshooting Security Issues**
+
+#### **Common Issues**
+
+1. **Port Not Accessible**: Check firewall rules with `sudo ufw status`
+2. **Token Expired**: Tokens expire after 30 minutes, generate new session
+3. **High Connection Attempts**: Monitor with security script for potential attacks
+4. **Session Isolation**: Verify users cannot access each other's data
+
+#### **Security Monitoring Commands**
+
+```bash
+# Check active ephemeral servers
+netstat -tlnp | grep -E ":(11[0-9]{3}|12[0-9]{3})"
+
+# Monitor connection patterns
+netstat -an | grep -E ":(11[0-9]{3}|12[0-9]{3})" | awk '{print $5}' | cut -d: -f1 | sort | uniq -c
+
+# Check firewall status
+sudo ufw status | grep "11000:12000"
+```
+
+### **Centralized Environment Deployment**
+
+#### **Automated Deployment Script**
+
+```bash
+# Deploy all MCP .env files to remote server
+./scripts/deploy-mcp-envs.sh
+
+# Script automatically:
+# - Finds all .env files in ./mcp-servers/
+# - Creates remote directories if needed
+# - Copies .env files to corresponding remote locations
+# - Verifies deployment success
+```
+
+#### **Manual Deployment (if needed)**
+
+```bash
+# Deploy individual MCP server .env files
+scp ./mcp-servers/todoodles/.env alan@srv586875:~/projects/Sizzek/mcp-servers/todoodles/
+scp ./mcp-servers/memory/.env alan@srv586875:~/projects/Sizzek/mcp-servers/memory/
+scp ./mcp-servers/grocery-list/.env alan@srv586875:~/projects/Sizzek/mcp-servers/grocery-list/
+
+# Verify deployment
+ssh alan@srv586875 "find ~/projects/Sizzek/mcp-servers -name '.env' -exec ls -la {} \;"
+```
+
+### **MCP Server Configuration Standards**
+
+#### **Expected Environment Variables**
+
+Each MCP server should have the following configuration in its `.env` file:
+
+```bash
+# MongoDB Configuration
+MONGODB_URI=mongodb://localhost:27017/mcp_data
+MONGODB_DATABASE=mcp_data
+MCP_STORAGE_TYPE=mongodb
+
+# Server-specific collection
+MONGODB_COLLECTION=user_[service_name]
+
+# Logging
+LOG_LEVEL=info
+```
+
+#### **Server-Specific Configurations**
+
+| MCP Server | Database | Collection | Purpose |
+|------------|----------|------------|---------|
+| `memory` | `mcp_data` | `user_memory` | User memory entities |
+| `movies` | `mcp_data` | `user_movies` | Movie preferences |
+| `grocery-list` | `mcp_data` | `user_groceries` | Shopping lists |
+| `todoodles` | `mcp_data` | `user_todoodles` | Todo items |
+| `scheduled-tasks` | `LibreChat` | `scheduled_tasks` | Scheduled notifications |
+| `twilio-sms` | `LibreChat` | `users` | User management |
+| `google-calendar-mcp` | `mcp_data` | `user_calendar` | Calendar integration |
+
+### **Integration with Build Process**
+
+The environment deployment is integrated into the MCP build process:
+
+```bash
+# Build all MCP servers and deploy environments
+./scripts/build-all-mcps.sh
+
+# This automatically runs:
+# 1. Build each MCP server
+# 2. Deploy .env files using deploy-mcp-envs.sh
+# 3. Verify deployment success
+```
+
+### **Troubleshooting MCP Environment Issues**
+
+#### **Common Issues and Solutions**
+
+1. **MCP server can't access MongoDB data**
+   ```bash
+   # Check .env file exists and has correct configuration
+   ssh alan@srv586875 "cat ~/projects/Sizzek/mcp-servers/todoodles/.env"
+   
+   # Verify MongoDB connection
+   ssh alan@srv586875 "cd ~/projects/Sizzek/mcp-servers/todoodles && node -e \"console.log(process.env.MONGODB_URI)\""
+   
+   # Restart MCP server after .env changes
+   ssh alan@srv586875 "cd ~/projects/Sizzek/mcp-servers/todoodles && npm restart"
+   ```
+
+2. **Configuration drift between servers**
+   ```bash
+   # Redeploy all .env files
+   ./scripts/deploy-mcp-envs.sh
+   
+   # Verify all servers have consistent configuration
+   ssh alan@srv586875 "find ~/projects/Sizzek/mcp-servers -name '.env' -exec grep -H 'MONGODB_URI' {} \;"
+   ```
+
+3. **MCP server using wrong storage type**
+   ```bash
+   # Check storage type configuration
+   ssh alan@srv586875 "grep -r 'MCP_STORAGE_TYPE' ~/projects/Sizzek/mcp-servers/*/.env"
+   
+   # Should show: MCP_STORAGE_TYPE=mongodb for all servers
+   ```
+
+### **Best Practices**
+
+1. **Always use the deployment script** instead of manual .env file management
+2. **Verify deployment** after any environment changes
+3. **Restart MCP servers** after .env file updates
+4. **Keep local .env files** as the source of truth
+5. **Version control** the deployment script but not the .env files themselves
 
 ---
 
