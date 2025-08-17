@@ -37,7 +37,12 @@ build_server() {
 
   # Install dependencies (prefer ci, fallback to install)
   if [[ -f package-lock.json ]]; then
-    npm ci || npm install --include=dev
+    if npm ci; then
+      echo "[INFO] Dependencies installed with npm ci"
+    else
+      echo "[INFO] npm ci failed, trying npm install..."
+      npm install --include=dev
+    fi
   else
     npm install --include=dev
   fi
@@ -65,5 +70,14 @@ for s in "${SERVERS[@]}"; do
 done
 
 echo "\nAll MCP servers processed."
+
+# Deploy centralized environment configurations
+echo "\n==== Deploying Environment Configurations ===="
+if [[ -f "$ROOT_DIR/scripts/deploy-mcp-envs.sh" ]]; then
+  echo "Running centralized environment deployment..."
+  bash "$ROOT_DIR/scripts/deploy-mcp-envs.sh"
+else
+  echo "[WARN] deploy-mcp-envs.sh not found. Skipping environment deployment."
+fi
 
 
