@@ -14,7 +14,7 @@ import { extractUserContext, validateUserAccess } from './utils/user-context.js'
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
