@@ -2426,6 +2426,18 @@ sudo ufw allow 11000:12000/tcp
 sudo ufw status | grep "11000:12000"
 ```
 
+#### **MCP Server Port Range Configuration**
+
+Each MCP server with web UI support must be configured with the correct port range:
+
+```bash
+# Environment variables for ephemeral web UI port range
+MCP_WEB_UI_PORT_MIN=11000
+MCP_WEB_UI_PORT_MAX=12000
+```
+
+**Important**: The port range in the MCP server configuration must match the firewall rules. The MCP servers will only allocate ports within this range for ephemeral web UIs.
+
 #### **Security Monitoring**
 
 ```bash

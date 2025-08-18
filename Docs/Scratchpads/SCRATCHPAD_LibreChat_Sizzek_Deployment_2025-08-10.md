@@ -306,3 +306,21 @@ sudo nginx -t && sudo systemctl reload nginx
       - **Session Cleanup**: Ensure expired sessions are properly cleaned up
     - **Firewall Rules**: Ports 11000-12000/tcp opened for ephemeral web UI access
     - **Security Status**: Good baseline, needs monitoring and rate limiting for production
+
+- 2025-08-17 Evening
+  - **🔄 MCP Web UI Package Update and Build Issues**
+    - **Package Published**: Successfully published `mcp-web-ui@1.1.0` to npm with protocol configuration fix
+    - **Dependencies Updated**: Updated MCP server `package.json` files to use `mcp-web-ui@^1.1.0`
+    - **Build Script Fixed**: Updated `build-all-mcps.sh` to handle `package-lock.json` mismatches gracefully
+    - **Current Issue**: MCP servers still generating malformed URLs like `http://https://sizzek.dungeonmind.net:11241?token=...`
+    - **Root Cause**: MCP servers haven't been rebuilt with the new package version yet
+    - **Build Status**: 
+      - ✅ Gmail-MCP-Server: Built successfully
+      - ✅ google-calendar-mcp: Built successfully  
+      - ❌ grocery-list: Failed due to lock file mismatch (script now handles this)
+      - ❌ movies: Failed due to TypeScript error (`Cannot find name 'envPath'`)
+    - **Next Steps**: 
+      1. Fix TypeScript error in movies MCP server
+      2. Rebuild all MCP servers to pick up the new `mcp-web-ui@1.1.0` package
+      3. Test that URLs are no longer malformed
+      4. Verify ephemeral web UI functionality works correctly
