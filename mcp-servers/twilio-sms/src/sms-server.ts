@@ -19,7 +19,6 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
 import https from 'https';
-import fs from 'fs';
 import { ContactManager } from './contacts.js';
 
 // Get the directory name of the current module
@@ -30,6 +29,11 @@ const __dirname = path.dirname(__filename);
 function loadEnv(serverLabel: string) {
     const candidates: string[] = [];
     if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+
+    // Add shared .env.sizzek file from config directory
+    const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
+    candidates.push(sharedEnvPath);
+
     const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
     const fileCandidates = [
         '.env.local',
@@ -315,7 +319,7 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
     recentMessages.set(messageKey, now);
 
     // Check if we need to prompt for name
-    const needsNamePrompt = contactManager.needsNamePrompt(phoneNumber);
+    const needsNamePrompt = await contactManager.needsNamePrompt(phoneNumber);
     let contentsWithPhoneNumber = message;
 
     if (needsNamePrompt) {
@@ -323,7 +327,7 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
     }
 
     // CRITICAL: Add phone number context to EVERY message so agent knows who to reply to
-    const contact = contactManager.getContact(phoneNumber);
+    const contact = await contactManager.getContact(phoneNumber);
     const contactName = contact?.name || `Unknown Contact`;
 
     // Format message with media information if present
@@ -366,7 +370,7 @@ async function forwardToClient(message: string, apiKey: string, phoneNumber: str
     const finalContent = `${messageHeader}\n${formattedMessage}`;
 
     // Get conversation title from contact manager
-    const conversationTitle = contactManager.getConversationTitle(phoneNumber);
+    const conversationTitle = await contactManager.getConversationTitle(phoneNumber);
 
     // Create attachments array with base64 data for LibreChat
     const attachments = processedMedia && processedMedia.length > 0
@@ -558,7 +562,7 @@ app.post('/api/receive-sms', async (req, res) => {
                 const nameMatch = body.match(/^Name:\s*(.+)$/i);
                 if (nameMatch) {
                     const name = nameMatch[1].trim();
-                    contactManager.updateContactName(phoneNumber, name);
+                    await contactManager.updateContactName(phoneNumber, name);
                     console.error('[SMS-SERVER] Name updated asynchronously:', name);
                     return;
                 }
@@ -595,7 +599,7 @@ app.post('/api/manage-contact', async (req, res) => {
 
     try {
         // Get existing contact or create new one
-        const contact = contactManager.addOrUpdateContact(contactPhone, {
+        const contact = await contactManager.addOrUpdateContact(contactPhone, {
             name: contactName,
             metadata
         }, ''); // Empty conversation ID as this is just an update

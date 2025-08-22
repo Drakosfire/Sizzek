@@ -1,17 +1,22 @@
-import fs from 'fs';
+import { StorageFactory } from 'mcp-data';
+import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
+import fs from 'fs';
 import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Generic, overrideable env loader (keep in sync with server)
-import fs from 'fs';
 function loadEnv() {
     const candidates: string[] = [];
     if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+
+    // Add shared .env.sizzek file from config directory
+    const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
+    candidates.push(sharedEnvPath);
+
     const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
     const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
     for (const dir of dirCandidates) {
@@ -27,6 +32,14 @@ function loadEnv() {
         }
     }
     if (!used) dotenv.config();
+
+    // Normalize Mongo env vars for cross-compat
+    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
+        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    }
+    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
+        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    }
 }
 loadEnv();
 
@@ -49,7 +62,7 @@ interface Contact {
 }
 
 interface ContactStore {
-    contacts: Map<string, Contact>;
+    contacts: Array<[string, Contact]>;
     lastUpdated: string;
 }
 
@@ -89,118 +102,54 @@ interface ContactLookupConfig {
 }
 
 class ContactManager {
-    private store: ContactStore;
-    private readonly storePath: string;
+    private storage: ReturnType<typeof this.createStorage>;
     private readonly defaultAgentId: string;
+    private operationLocks: Map<string, Promise<any>> = new Map();
 
     constructor() {
-        // Get data directory from environment or use default
-        const customDataDir = process.env.CONTACTS_DATA_DIR;
-        let dataDir: string;
-
-        if (customDataDir) {
-            // If custom path is provided, use it directly
-            dataDir = customDataDir;
-            console.error('[ContactManager] Using custom data directory:', dataDir);
-
-            // Verify the directory exists and is writable
-            try {
-                if (!fs.existsSync(dataDir)) {
-                    fs.mkdirSync(dataDir, { recursive: true });
-                }
-                // Test write access
-                const testFile = path.join(dataDir, '.test');
-                fs.writeFileSync(testFile, 'test');
-                fs.unlinkSync(testFile);
-            } catch (error) {
-                console.error('[ContactManager] Error accessing custom data directory, falling back to default');
-                const projectRoot = path.join(__dirname, '..');
-                dataDir = path.join(projectRoot, 'data');
-            }
-        } else {
-            // Otherwise use default location in project
-            const projectRoot = path.join(__dirname, '..');
-            dataDir = path.join(projectRoot, 'data');
-        }
-
-        this.storePath = path.join(dataDir, 'contacts.json');
         this.defaultAgentId = AGENT_ID;
-
-        // Ensure data directory exists
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-
-        // Initialize store by loading from file or creating new if needed
-        this.store = this.loadStore();
+        this.storage = this.createStorage();
+        console.log('[ContactManager] Initialized with MongoDB storage');
     }
 
-    private createEmptyStore(): ContactStore {
-        return {
-            contacts: new Map<string, Contact>(),
+    private createStorage() {
+        const storageType = process.env.MCP_STORAGE_TYPE || 'mongodb';
+        const defaultData: ContactStore = {
+            contacts: [],
             lastUpdated: new Date().toISOString()
         };
+
+        const config = {
+            type: storageType as 'json' | 'mongodb',
+            mongodb: storageType === 'mongodb' ? {
+                connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
+                databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
+                collectionName: process.env.MONGODB_COLLECTION || 'twilio_contacts',
+                connectionTimeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
+                maxRetries: parseInt(process.env.MCP_MONGODB_RETRIES || '3'),
+                encryptionKey: process.env.CREDS_KEY
+            } : undefined,
+            json: storageType === 'json' ? {
+                baseDir: path.dirname(process.env.CONTACTS_FILE_PATH || './contacts-data.json'),
+                createDirIfNotExists: true,
+                backupEnabled: process.env.MCP_BACKUP_ENABLED === 'true'
+            } : undefined
+        };
+
+        return StorageFactory.createUserStorage(config, defaultData);
     }
 
-    private loadStore(): ContactStore {
-        try {
-            if (fs.existsSync(this.storePath)) {
-                const fileContent = fs.readFileSync(this.storePath, 'utf-8');
-
-                // Check if file is empty
-                if (!fileContent.trim()) {
-                    const emptyStore = this.createEmptyStore();
-                    this.saveStore(emptyStore);
-                    return emptyStore;
-                }
-
-                try {
-                    const data = JSON.parse(fileContent);
-                    // Validate data structure
-                    if (!data.contacts || !Array.isArray(data.contacts)) {
-                        const emptyStore = this.createEmptyStore();
-                        this.saveStore(emptyStore);
-                        return emptyStore;
-                    }
-
-                    // Convert the contacts array back to a Map
-                    const contactsMap = new Map<string, Contact>();
-                    data.contacts.forEach((contact: Contact) => {
-                        contactsMap.set(contact.phoneNumber, contact);
-                    });
-                    return {
-                        contacts: contactsMap,
-                        lastUpdated: data.lastUpdated || new Date().toISOString()
-                    };
-                } catch (parseError) {
-                    console.error('[ContactManager] Error parsing contact store, creating new store');
-                    const emptyStore = this.createEmptyStore();
-                    this.saveStore(emptyStore);
-                    return emptyStore;
-                }
-            } else {
-                const emptyStore = this.createEmptyStore();
-                this.saveStore(emptyStore);
-                return emptyStore;
-            }
-        } catch (error) {
-            console.error('[ContactManager] Error loading contact store:', error);
-            const emptyStore = this.createEmptyStore();
-            this.saveStore(emptyStore);
-            return emptyStore;
+    private async getLockedOperation<T>(key: string, operation: () => Promise<T>): Promise<T> {
+        if (this.operationLocks.has(key)) {
+            return this.operationLocks.get(key)!;
         }
-    }
 
-    private saveStore(store: ContactStore): void {
-        try {
-            const data = {
-                contacts: Array.from(store.contacts.values()),
-                lastUpdated: store.lastUpdated
-            };
-            fs.writeFileSync(this.storePath, JSON.stringify(data, null, 2));
-        } catch (error) {
-            console.error('[ContactManager] Error saving contact store:', error);
-        }
+        const promise = operation().finally(() => {
+            this.operationLocks.delete(key);
+        });
+
+        this.operationLocks.set(key, promise);
+        return promise;
     }
 
     private normalizePhoneNumber(phoneNumber: string): string {
@@ -208,101 +157,162 @@ class ContactManager {
         return phoneNumber.replace(/\D/g, '');
     }
 
-    public getContact(phoneNumber: string): Contact | undefined {
+    public async getContact(phoneNumber: string): Promise<Contact | undefined> {
         const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
-        return this.store.contacts.get(normalizedNumber);
+
+        return this.getLockedOperation(`get_${normalizedNumber}`, async () => {
+            try {
+                const data = await this.storage.load();
+                if (!data) return undefined;
+
+                const contacts = new Map<string, Contact>(data.contacts || []);
+                return contacts.get(normalizedNumber);
+            } catch (error) {
+                console.error('[ContactManager] Error getting contact:', error);
+                return undefined;
+            }
+        });
     }
 
-    public addOrUpdateContact(
+    public async addOrUpdateContact(
         phoneNumber: string,
         updates: Partial<Contact>,
         conversationId: string
-    ): Contact {
+    ): Promise<Contact> {
         const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
-        const existingContact = this.store.contacts.get(normalizedNumber);
 
-        const contact: Contact = {
-            phoneNumber: normalizedNumber,
-            name: updates.name ?? existingContact?.name ?? null,
-            agentId: updates.agentId ?? existingContact?.agentId ?? this.defaultAgentId,
-            conversationId: conversationId,
-            lastInteraction: new Date().toISOString(),
-            metadata: {
-                ...existingContact?.metadata,
-                ...updates.metadata
+        return this.getLockedOperation(`update_${normalizedNumber}`, async () => {
+            try {
+                const data = await this.storage.load() || { contacts: [], lastUpdated: new Date().toISOString() };
+                const contacts = new Map<string, Contact>(data.contacts || []);
+
+                const existingContact = contacts.get(normalizedNumber);
+
+                const contact: Contact = {
+                    phoneNumber: normalizedNumber,
+                    name: updates.name ?? existingContact?.name ?? null,
+                    agentId: updates.agentId ?? existingContact?.agentId ?? this.defaultAgentId,
+                    conversationId: conversationId,
+                    lastInteraction: new Date().toISOString(),
+                    metadata: {
+                        ...existingContact?.metadata,
+                        ...updates.metadata
+                    }
+                };
+
+                contacts.set(normalizedNumber, contact);
+
+                await this.storage.save({
+                    contacts: Array.from(contacts.entries()),
+                    lastUpdated: new Date().toISOString()
+                });
+
+                return contact;
+            } catch (error) {
+                console.error('[ContactManager] Error adding/updating contact:', error);
+                throw error;
             }
-        };
-
-        this.store.contacts.set(normalizedNumber, contact);
-        this.saveStore(this.store);
-        return contact;
+        });
     }
 
-    public updateContactName(phoneNumber: string, name: string): Contact | undefined {
+    public async updateContactName(phoneNumber: string, name: string): Promise<Contact | undefined> {
         const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
-        const contact = this.store.contacts.get(normalizedNumber);
 
-        if (contact) {
-            contact.name = name;
-            contact.lastInteraction = new Date().toISOString();
-            this.store.contacts.set(normalizedNumber, contact);
-            this.saveStore(this.store);
-            return contact;
-        }
+        return this.getLockedOperation(`update_name_${normalizedNumber}`, async () => {
+            try {
+                const data = await this.storage.load() || { contacts: [], lastUpdated: new Date().toISOString() };
+                const contacts = new Map<string, Contact>(data.contacts || []);
+                const contact = contacts.get(normalizedNumber);
 
-        return undefined;
+                if (contact) {
+                    contact.name = name;
+                    contact.lastInteraction = new Date().toISOString();
+                    contacts.set(normalizedNumber, contact);
+
+                    await this.storage.save({
+                        contacts: Array.from(contacts.entries()),
+                        lastUpdated: new Date().toISOString()
+                    });
+
+                    return contact;
+                }
+
+                return undefined;
+            } catch (error) {
+                console.error('[ContactManager] Error updating contact name:', error);
+                return undefined;
+            }
+        });
     }
 
-    public getConversationTitle(phoneNumber: string): string {
-        const contact = this.getContact(phoneNumber);
+    public async getConversationTitle(phoneNumber: string): Promise<string> {
+        const contact = await this.getContact(phoneNumber);
         if (contact?.name) {
             return `SMS Agent Chat with ${contact.name}`;
         }
         return `SMS Agent Chat with Unknown (${phoneNumber})`;
     }
 
-    public needsNamePrompt(phoneNumber: string): boolean {
-        const contact = this.getContact(phoneNumber);
+    public async needsNamePrompt(phoneNumber: string): Promise<boolean> {
+        const contact = await this.getContact(phoneNumber);
         return !contact?.name;
     }
 
     // Search local contacts by name or phone number
-    public searchLocalContacts(query: string): Contact[] {
-        const results: Contact[] = [];
-        const normalizedQuery = query.toLowerCase().trim();
+    public async searchLocalContacts(query: string): Promise<Contact[]> {
+        return this.getLockedOperation(`search_${query}`, async () => {
+            try {
+                const data = await this.storage.load() || { contacts: [], lastUpdated: new Date().toISOString() };
+                const contacts = new Map<string, Contact>(data.contacts || []);
+                const results: Contact[] = [];
+                const normalizedQuery = query.toLowerCase().trim();
 
-        for (const contact of this.store.contacts.values()) {
-            // Search by name
-            if (contact.name && contact.name.toLowerCase().includes(normalizedQuery)) {
-                results.push(contact);
-                continue;
+                for (const contact of contacts.values()) {
+                    // Search by name
+                    if (contact.name && contact.name.toLowerCase().includes(normalizedQuery)) {
+                        results.push(contact);
+                        continue;
+                    }
+
+                    // Search by phone number (partial match)
+                    if (contact.phoneNumber.includes(normalizedQuery.replace(/\D/g, ''))) {
+                        results.push(contact);
+                        continue;
+                    }
+
+                    // Search by metadata
+                    if (contact.metadata?.notes && contact.metadata.notes.toLowerCase().includes(normalizedQuery)) {
+                        results.push(contact);
+                        continue;
+                    }
+
+                    // Search by tags
+                    if (contact.metadata?.tags && contact.metadata.tags.some(tag => tag.toLowerCase().includes(normalizedQuery))) {
+                        results.push(contact);
+                        continue;
+                    }
+                }
+
+                return results;
+            } catch (error) {
+                console.error('[ContactManager] Error searching contacts:', error);
+                return [];
             }
-
-            // Search by phone number (partial match)
-            if (contact.phoneNumber.includes(normalizedQuery.replace(/\D/g, ''))) {
-                results.push(contact);
-                continue;
-            }
-
-            // Search by metadata
-            if (contact.metadata?.notes && contact.metadata.notes.toLowerCase().includes(normalizedQuery)) {
-                results.push(contact);
-                continue;
-            }
-
-            // Search by tags
-            if (contact.metadata?.tags && contact.metadata.tags.some(tag => tag.toLowerCase().includes(normalizedQuery))) {
-                results.push(contact);
-                continue;
-            }
-        }
-
-        return results;
+        });
     }
 
     // Get all contacts
-    public getAllContacts(): Contact[] {
-        return Array.from(this.store.contacts.values());
+    public async getAllContacts(): Promise<Contact[]> {
+        return this.getLockedOperation('get_all_contacts', async () => {
+            try {
+                const data = await this.storage.load() || { contacts: [], lastUpdated: new Date().toISOString() };
+                const contacts = new Map<string, Contact>(data.contacts || []);
+                return Array.from(contacts.values());
+            } catch (error) {
+                console.error('[ContactManager] Error getting all contacts:', error);
+                return [];
+            }
+        });
     }
 }
 
@@ -404,7 +414,7 @@ class ContactLookupService {
 
         try {
             // 1. Search local contacts
-            const localContacts = this.contactManager.searchLocalContacts(query);
+            const localContacts = await this.contactManager.searchLocalContacts(query);
             for (const contact of localContacts) {
                 results.push({
                     source: 'local',
@@ -446,7 +456,7 @@ class ContactLookupService {
 
         try {
             // 1. Check local contacts first
-            const localContact = this.contactManager.getContact(phoneNumber);
+            const localContact = await this.contactManager.getContact(phoneNumber);
             if (localContact) {
                 return {
                     source: 'local',
@@ -496,7 +506,7 @@ class ContactLookupService {
 
         try {
             // 1. Get all local contacts
-            const localContacts = this.contactManager.getAllContacts();
+            const localContacts = await this.contactManager.getAllContacts();
             for (const contact of localContacts) {
                 results.push({
                     source: 'local',

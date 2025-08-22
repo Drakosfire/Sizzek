@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 MCP_DIR="$ROOT_DIR/mcp-servers"
+CONFIG_DIR="$ROOT_DIR/config"
 
 # Increase Node memory for heavier builds
 export NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=4096}
@@ -71,13 +72,40 @@ done
 
 echo "\nAll MCP servers processed."
 
-# Deploy centralized environment configurations
-echo "\n==== Deploying Environment Configurations ===="
-if [[ -f "$ROOT_DIR/scripts/deploy-mcp-envs.sh" ]]; then
-  echo "Running centralized environment deployment..."
-  bash "$ROOT_DIR/scripts/deploy-mcp-envs.sh"
+# Verify unified environment configuration
+echo "\n==== Verifying Environment Configuration ===="
+if [[ -f "$CONFIG_DIR/.env.sizzek" ]]; then
+  echo "✅ Found unified .env.sizzek configuration"
+  
+  # Check for required common variables
+  if grep -q "MONGODB_CONNECTION_STRING" "$CONFIG_DIR/.env.sizzek"; then
+    echo "✅ MongoDB connection string configured"
+  else
+    echo "⚠️  WARNING: MONGODB_CONNECTION_STRING not found in .env.sizzek"
+  fi
+  
+  if grep -q "MCP_STORAGE_TYPE" "$CONFIG_DIR/.env.sizzek"; then
+    echo "✅ MCP storage type configured"
+  else
+    echo "⚠️  WARNING: MCP_STORAGE_TYPE not found in .env.sizzek"
+  fi
 else
-  echo "[WARN] deploy-mcp-envs.sh not found. Skipping environment deployment."
+  echo "❌ ERROR: Unified .env.sizzek not found at $CONFIG_DIR/.env.sizzek"
+  echo "   Please create the unified configuration file with common MCP server variables"
+  exit 1
 fi
+
+# Deploy centralized environment configurations (if remote deployment script exists)
+echo "\n==== Deploying Environment Configurations ===="
+if [[ -f "$ROOT_DIR/ci-cd/deploy-mcp-envs.sh" ]]; then
+  echo "Running centralized environment deployment..."
+  bash "$ROOT_DIR/ci-cd/deploy-mcp-envs.sh"
+else
+  echo "[INFO] deploy-mcp-envs.sh not found. Skipping remote environment deployment."
+  echo "[INFO] MCP servers will use local .env.sizzek configuration"
+fi
+
+echo "\n✅ MCP server build and configuration verification complete!"
+echo "   All servers now load from unified .env.sizzek configuration"
 
 

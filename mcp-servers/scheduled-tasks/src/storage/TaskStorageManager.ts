@@ -183,7 +183,7 @@ export class TaskStorageManager {
             } : undefined,
 
             mongoConfig: storageType === 'mongodb' ? {
-                connectionString: process.env.MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017/LibreChat',
+                connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
                 databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
                 collectionName: process.env.MONGODB_COLLECTION || 'scheduled_tasks',
                 timeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),

@@ -21,7 +21,8 @@
   "dependencies": {
     "express": "^5.1.0",
     "mongodb": "^6.13.0",
-    "twilio": "^4.22.0"
+    "twilio": "^4.22.0",
+    "mcp-data": "^1.0.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",

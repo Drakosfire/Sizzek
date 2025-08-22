@@ -23,9 +23,9 @@
   "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",
+    "dotenv": "^16.5.0",
     "mcp-data": "^1.0.1",
-    "mcp-web-ui": "^1.1.0",
-    "dotenv": "^16.5.0"
+    "mcp-web-ui": "^1.1.2"
   },
   "devDependencies": {
     "@types/chai": "^4.3.11",

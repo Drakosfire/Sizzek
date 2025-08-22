@@ -1,0 +1,13 @@
+{
+  "name": "mcp-servers-migration",
+  "version": "1.0.0",
+  "description": "Data migration script for MCP servers",
+  "type": "module",
+  "scripts": {
+    "migrate": "node data-migration-script.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "mcp-data": "^1.0.1"
+  }
+}

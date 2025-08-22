@@ -30,6 +30,11 @@ const VERSION = packageJson.version;
   const __dirnameLocal = dirname(__filename);
   const candidates: string[] = [];
   if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+
+  // Add shared .env.sizzek file from config directory
+  const sharedEnvPath = join(__dirnameLocal, '..', '..', '..', 'config', '.env.sizzek');
+  candidates.push(sharedEnvPath);
+
   const dirCandidates = [join(__dirnameLocal, '..'), join(__dirnameLocal, '..', '..')];
   const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
   for (const d of dirCandidates) for (const f of fileCandidates) candidates.push(join(d, f));

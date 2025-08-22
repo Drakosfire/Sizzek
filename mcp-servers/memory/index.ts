@@ -20,6 +20,11 @@ const __dirname = path.dirname(__filename);
 function loadEnv(serverLabel: string) {
   const candidates: string[] = [];
   if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+
+  // Add shared .env.sizzek file from config directory
+  const sharedEnvPath = path.resolve(__dirname, '..', '..', 'config', '.env.sizzek');
+  candidates.push(sharedEnvPath);
+
   const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
   const fileCandidates = [
     '.env.local',

@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../mcp-data-standalone"
+		},
+		{
+			"path": "../../../LibreChat"
+		},
+		{
+			"path": "../../../mcp-web-ui-standalone"
+		}
+	],
+	"settings": {}
+}

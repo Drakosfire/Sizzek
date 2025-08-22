@@ -4,6 +4,7 @@
     "@types/express": "^5.0.2",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "mcp-data": "^1.0.1"
   }
 }
