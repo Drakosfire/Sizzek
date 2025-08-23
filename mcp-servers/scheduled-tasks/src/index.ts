@@ -28,8 +28,10 @@ function loadEnv(serverLabel: string) {
     // Add shared .env.sizzek file from config directory
     const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
     const containerSharedEnvPath = '/app/config/.env.sizzek';
+    const relativeSharedEnvPath = path.resolve(__dirname, '..', '..', 'config', '.env.sizzek');
     candidates.push(sharedEnvPath);
     candidates.push(containerSharedEnvPath);
+    candidates.push(relativeSharedEnvPath);
 
     const dirCandidates = [
         path.resolve(__dirname, '..', '..'), // compiled dist/src -> project root
@@ -61,6 +63,12 @@ function loadEnv(serverLabel: string) {
     }
     if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
         process.env.MONGODB_URI = process.env.MONGO_URI;
+    }
+
+    // Check if we're in a container environment where .env.sizzek is loaded via env_file
+    const envFileLoaded = process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI;
+    if (envFileLoaded && !usedPath) {
+        usedPath = '(container env_file)';
     }
 
     console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'}`);
