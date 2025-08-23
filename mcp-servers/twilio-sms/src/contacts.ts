@@ -8,38 +8,25 @@ import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Generic, overrideable env loader (keep in sync with server)
+// Load environment from inherited environment variables
 function loadEnv() {
-    const candidates: string[] = [];
-    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    // Check if we have inherited environment variables from parent process
+    const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
+    const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';
 
-    // Add shared .env.sizzek file from config directory
-    const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
-    candidates.push(sharedEnvPath);
-
-    const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
-    const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
-    for (const dir of dirCandidates) {
-        for (const file of fileCandidates) {
-            candidates.push(path.join(dir, file));
-        }
+    if (!envVarsPresent) {
+        console.error(`[Twilio-SMS] Warning: No environment variables found. Check LibreChat configuration.`);
     }
-    let used: string | undefined;
-    for (const p of candidates) {
-        if (fs.existsSync(p)) {
-            dotenv.config({ path: p, override: true });
-            used = used || p;
-        }
-    }
-    if (!used) dotenv.config();
 
-    // Normalize Mongo env vars for cross-compat
+    // Back-compat for URI naming
     if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
         process.env.MONGO_URI = process.env.MONGODB_URI;
     }
     if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
         process.env.MONGODB_URI = process.env.MONGO_URI;
     }
+
+    console.error(`[Twilio-SMS] Env loaded: ${usedPath}`);
 }
 loadEnv();
 

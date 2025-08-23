@@ -12,8 +12,16 @@ import { LibreChatClient } from './http/librechat-client.js';
 import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
 import { extractUserContext, validateUserAccess } from './utils/user-context.js';
 
-// Simple env setup - Docker Compose handles .env.sizzek via env_file
+// Load environment from inherited environment variables
 function loadEnv(serverLabel: string) {
+    // Check if we have inherited environment variables from parent process
+    const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
+    const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';
+
+    if (!envVarsPresent) {
+        console.error(`[${serverLabel}] Warning: No environment variables found. Check LibreChat configuration.`);
+    }
+
     // Back-compat for URI naming
     if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
         process.env.MONGO_URI = process.env.MONGODB_URI;
@@ -21,10 +29,6 @@ function loadEnv(serverLabel: string) {
     if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
         process.env.MONGODB_URI = process.env.MONGO_URI;
     }
-
-    // Check if we're in a container environment where .env.sizzek is loaded via env_file
-    const envFileLoaded = process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI;
-    const usedPath = envFileLoaded ? '(container env_file)' : '(default)';
 
     console.error(`[${serverLabel}] Env loaded: ${usedPath}`);
 }
