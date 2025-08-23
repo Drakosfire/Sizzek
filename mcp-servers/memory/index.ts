@@ -16,25 +16,17 @@ import { StorageFactory } from 'mcp-data';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment from inherited environment variables
+// Simple environment loader
 function loadEnv(serverLabel: string) {
-  // Check if we have inherited environment variables from parent process
-  const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
-  const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';
+  // Load from ENV_PATH or fallback to default location
+  const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
 
-  if (!envVarsPresent) {
-    console.error(`[${serverLabel}] Warning: No environment variables found. Check LibreChat configuration.`);
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
+    console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
+  } else {
+    console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
   }
-
-  // Back-compat for URI naming
-  if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
-    process.env.MONGO_URI = process.env.MONGODB_URI;
-  }
-  if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
-    process.env.MONGODB_URI = process.env.MONGO_URI;
-  }
-
-  console.error(`[${serverLabel}] Env loaded: ${usedPath}`);
 }
 
 loadEnv('Memory');

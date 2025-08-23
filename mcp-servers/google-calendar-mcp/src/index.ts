@@ -25,29 +25,20 @@ const packageJsonPath = join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 const VERSION = packageJson.version;
 
-// Load environment variables early (overrideable via ENV_PATH)
+// Simple environment loader
 (() => {
-  const __dirnameLocal = dirname(__filename);
-  const candidates: string[] = [];
-  if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+  // Load from the mounted .env.sizzek file
+  const envPath = '/app/.env.sizzek';
 
-  // Add shared .env.sizzek file from config directory
-  const sharedEnvPath = join(__dirnameLocal, '..', '..', '..', 'config', '.env.sizzek');
-  candidates.push(sharedEnvPath);
-
-  const dirCandidates = [join(__dirnameLocal, '..'), join(__dirnameLocal, '..', '..')];
-  const fileCandidates = ['.env.local', '.env', process.env.NODE_ENV === 'production' ? '.env.production' : undefined].filter(Boolean) as string[];
-  for (const d of dirCandidates) for (const f of fileCandidates) candidates.push(join(d, f));
-  let used: string | undefined;
-  for (const p of candidates) {
-    if (fs.existsSync(p)) {
-      dotenv.config({ path: p, override: true });
-      used = used || p;
-    }
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
+    console.error(`[google-calendar-mcp] Environment loaded from: ${envPath}`);
+  } else {
+    console.error(`[google-calendar-mcp] Warning: Environment file not found at ${envPath}`);
   }
-  if (!used) dotenv.config();
+
   const creds = process.env.GOOGLE_OAUTH_CREDENTIALS ? '[SET]' : '[NOT_SET]';
-  console.error(`[google-calendar-mcp] Env loaded: ${used || '(default)'} | GOOGLE_OAUTH_CREDENTIALS=${creds}`);
+  console.error(`[google-calendar-mcp] GOOGLE_OAUTH_CREDENTIALS=${creds}`);
 })();
 
 // --- Global Variables --- 

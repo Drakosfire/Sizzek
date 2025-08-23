@@ -17,48 +17,24 @@ import { TodoodlesWebUIManager } from './web-ui-integration.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Generic, overrideable env loader
+// Simple environment loader
 function loadEnv(serverLabel: string) {
-    const candidates: string[] = [];
-    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
+    // Load from ENV_PATH or fallback to default location
+    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
 
-    // Add shared .env.sizzek file from config directory
-    const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
-    candidates.push(sharedEnvPath);
-
-    const dirCandidates = [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')];
-    const fileCandidates = [
-        '.env.local',
-        '.env',
-        process.env.NODE_ENV === 'production' ? '.env.production' : undefined,
-    ].filter(Boolean) as string[];
-    for (const dir of dirCandidates) {
-        for (const file of fileCandidates) {
-            candidates.push(path.join(dir, file));
-        }
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath, override: true });
+        console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
+    } else {
+        console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
     }
 
-    let usedPath: string | undefined;
-    for (const p of candidates) {
-        if (fs.existsSync(p)) {
-            dotenv.config({ path: p, override: true });
-            usedPath = usedPath || p;
-        }
-    }
-    if (!usedPath) dotenv.config();
 
-    // Normalize Mongo env vars for cross-compat
-    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
-        process.env.MONGO_URI = process.env.MONGODB_URI;
-    }
-    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
-        process.env.MONGODB_URI = process.env.MONGO_URI;
-    }
 
     const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
     const db = process.env.MONGODB_DATABASE || '';
     const coll = process.env.MONGODB_COLLECTION || process.env.MONGODB_COLLECTION_PREFIX;
-    console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'} | DB=${db} | Collection=${coll} | URI=${uri ? '[SET]' : '[NOT_SET]'}`);
+    console.error(`[${serverLabel}] DB=${db} | Collection=${coll} | URI=${uri ? '[SET]' : '[NOT_SET]'}`);
 }
 
 loadEnv('Todoodles');

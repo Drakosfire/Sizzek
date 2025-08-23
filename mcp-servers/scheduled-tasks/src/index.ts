@@ -1,5 +1,28 @@
 #!/usr/bin/env node
 
+import dotenv from 'dotenv';
+import fs from 'fs';
+
+// Load environment variables FIRST, before any other imports
+function loadEnv(serverLabel: string) {
+    // Load from ENV_PATH or fallback to default location
+    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+
+    console.error(`[${serverLabel}] Looking for environment file at: ${envPath}`);
+    console.error(`[${serverLabel}] File exists: ${fs.existsSync(envPath)}`);
+
+    if (fs.existsSync(envPath)) {
+        const result = dotenv.config({ path: envPath, override: true });
+        console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
+        console.error(`[${serverLabel}] Dotenv result:`, result);
+    } else {
+        console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
+    }
+}
+
+loadEnv('Scheduled-Tasks');
+
+// Now import everything else after environment is loaded
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -11,29 +34,6 @@ import { ScheduleValidator } from './core/schedule-validator.js';
 import { LibreChatClient } from './http/librechat-client.js';
 import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
 import { extractUserContext, validateUserAccess } from './utils/user-context.js';
-
-// Load environment from inherited environment variables
-function loadEnv(serverLabel: string) {
-    // Check if we have inherited environment variables from parent process
-    const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
-    const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';
-
-    if (!envVarsPresent) {
-        console.error(`[${serverLabel}] Warning: No environment variables found. Check LibreChat configuration.`);
-    }
-
-    // Back-compat for URI naming
-    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
-        process.env.MONGO_URI = process.env.MONGODB_URI;
-    }
-    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
-        process.env.MONGODB_URI = process.env.MONGO_URI;
-    }
-
-    console.error(`[${serverLabel}] Env loaded: ${usedPath}`);
-}
-
-loadEnv('Scheduled-Tasks');
 
 // Environment variables validation
 const LIBRECHAT_ENDPOINT = process.env.LIBRECHAT_ENDPOINT || 'http://localhost:3080';
@@ -53,6 +53,9 @@ console.error('LIBRECHAT_AGENT_NAME:', process.env.LIBRECHAT_AGENT_NAME || '[NOT
 console.error('LIBRECHAT_AGENT_ID:', process.env.LIBRECHAT_AGENT_ID || '[NOT SET]');
 console.error('LIBRECHAT_AGENT_MODEL:', process.env.LIBRECHAT_AGENT_MODEL || '[NOT SET]');
 console.error('MONGO_URI:', process.env.MONGO_URI ? '[PRESENT]' : '[NOT SET]');
+if (process.env.MONGO_URI) {
+    console.error('MONGO_URI value:', process.env.MONGO_URI.substring(0, 50) + '...');
+}
 
 if (!LIBRECHAT_API_KEY) {
     console.error('Warning: LIBRECHAT_API_KEY not set. Tasks will only log messages instead of triggering LibreChat.');
