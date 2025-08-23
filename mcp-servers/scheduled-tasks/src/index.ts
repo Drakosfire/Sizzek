@@ -11,45 +11,9 @@ import { ScheduleValidator } from './core/schedule-validator.js';
 import { LibreChatClient } from './http/librechat-client.js';
 import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
 import { extractUserContext, validateUserAccess } from './utils/user-context.js';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
 
-// Get the directory name of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Generic, overrideable env loader
+// Simple env setup - Docker Compose handles .env.sizzek via env_file
 function loadEnv(serverLabel: string) {
-    const candidates: string[] = [];
-    if (process.env.ENV_PATH) candidates.push(process.env.ENV_PATH);
-
-    // Simple local env files for development
-    const dirCandidates = [
-        path.resolve(__dirname, '..', '..'), // compiled dist/src -> project root
-        path.resolve(__dirname, '..'),
-    ];
-    const fileCandidates = [
-        '.env.local',
-        '.env',
-        process.env.NODE_ENV === 'production' ? '.env.production' : undefined,
-    ].filter(Boolean) as string[];
-    for (const dir of dirCandidates) {
-        for (const file of fileCandidates) {
-            candidates.push(path.join(dir, file));
-        }
-    }
-
-    let usedPath: string | undefined;
-    for (const p of candidates) {
-        if (existsSync(p)) {
-            dotenv.config({ path: p, override: true });
-            usedPath = usedPath || p;
-        }
-    }
-    if (!usedPath) dotenv.config();
-
     // Back-compat for URI naming
     if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
         process.env.MONGO_URI = process.env.MONGODB_URI;
@@ -60,11 +24,9 @@ function loadEnv(serverLabel: string) {
 
     // Check if we're in a container environment where .env.sizzek is loaded via env_file
     const envFileLoaded = process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI;
-    if (envFileLoaded && !usedPath) {
-        usedPath = '(container env_file)';
-    }
+    const usedPath = envFileLoaded ? '(container env_file)' : '(default)';
 
-    console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'}`);
+    console.error(`[${serverLabel}] Env loaded: ${usedPath}`);
 }
 
 loadEnv('Scheduled-Tasks');
