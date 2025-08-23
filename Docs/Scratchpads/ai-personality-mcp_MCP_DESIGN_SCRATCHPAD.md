@@ -188,7 +188,7 @@ Purpose: Validate envs, auth, retries, and safe logging.
 - Env vars (startup validation; exit with message if missing):
   - `MCP_STORAGE_TYPE`, `MCP_USER_BASED`, `MCP_USER_ID`
   - JSON: `DATA_FILE_PATH`
-  - Mongo: `MONGODB_CONNECTION_STRING`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
+  - Mongo: `MONGO_URI`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
   - UI: `MCP_WEB_UI_BASE_URL`
   - Debug: `MCP_DEBUG`
 - Timeouts/retries: not needed MVP; add sane defaults in HTTP clients if introduced
@@ -368,7 +368,7 @@ Purpose: Confirm alignment before implementation/merge.
 MCP_STORAGE_TYPE=json
 MCP_USER_BASED=false
 DATA_FILE_PATH=./data/personas.json
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=personas
 MCP_WEB_UI_BASE_URL=localhost

@@ -98,7 +98,7 @@ MCP_STORAGE_TYPE=mongodb
 TODOS_FILE_PATH=./todoodle.json
 
 # ===== MONGODB STORAGE (when MCP_STORAGE_TYPE=mongodb) =====
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=user_todoodles
 MCP_MONGODB_TIMEOUT=10000
@@ -133,7 +133,7 @@ MCP_DEBUG=true
 **Production (MongoDB with LibreChat)**:
 ```env
 MCP_STORAGE_TYPE=mongodb
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=user_todoodles
 MCP_USER_BASED=true
@@ -161,7 +161,7 @@ mcpServers:
       MCP_USER_BASED: "true"
       
       # MongoDB configuration
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"
+      MONGO_URI: "mongodb://localhost:27017/LibreChat"
       MONGODB_DATABASE: "LibreChat"
       MONGODB_COLLECTION: "user_todoodles"
       
@@ -422,7 +422,7 @@ docker run -d -p 27017:27017 mongo:7.0
 
 # Edit .env
 MCP_STORAGE_TYPE=mongodb
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/test_todoodles
+MONGO_URI=mongodb://localhost:27017/test_todoodles
 MCP_USER_BASED=true
 MCP_USER_ID=test-user
 

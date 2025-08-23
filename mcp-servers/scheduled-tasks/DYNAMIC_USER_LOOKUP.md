@@ -85,7 +85,7 @@ LIBRECHAT_AGENT_ID=default
 LIBRECHAT_AGENT_MODEL=gpt-4o
 
 # MongoDB Connection (Required for user lookup)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 ```
 
@@ -113,7 +113,7 @@ mcpServers:
       LIBRECHAT_AGENT_NAME: "sizzek"
       LIBRECHAT_AGENT_ID: "default"
       LIBRECHAT_AGENT_MODEL: "gpt-4o"
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"
+      MONGO_URI: "mongodb://localhost:27017/LibreChat"
       MONGODB_DATABASE: "LibreChat"
       MCP_STORAGE_TYPE: "mongodb"
       MCP_USER_BASED: "true"
@@ -211,7 +211,7 @@ If you're currently using a hardcoded conversation ID:
 2. **Add new environment variables**:
    ```bash
    LIBRECHAT_AGENT_NAME=sizzek
-   MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+   MONGO_URI=mongodb://localhost:27017/LibreChat
    MONGODB_DATABASE=LibreChat
    ```
 3. **Test the new system**: Monitor logs to ensure user lookup is working

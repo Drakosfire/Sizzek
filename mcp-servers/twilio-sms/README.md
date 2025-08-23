@@ -102,7 +102,7 @@ TODOS_FILE_PATH=./memory_files/contacts.json
 
 # ===== MONGODB STORAGE (when MCP_STORAGE_TYPE=mongodb) =====
 # MongoDB connection string
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 
 # MongoDB database name (default: LibreChat)
 MONGODB_CONTACT_DATABASE=LibreChat
@@ -267,7 +267,7 @@ Common issues and solutions:
 
 4. **Contact lookup not working**
    - Check `MCP_STORAGE_TYPE` configuration
-   - For MongoDB: Verify `MONGODB_CONNECTION_STRING` is correct
+   - For MongoDB: Verify `MONGO_URI` is correct
    - For JSON: Ensure `TODOS_FILE_PATH` directory exists and is writable
    - Check MongoDB connection and collection name settings
 

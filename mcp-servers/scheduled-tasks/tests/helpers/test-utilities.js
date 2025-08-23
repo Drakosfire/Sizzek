@@ -29,7 +29,7 @@ export function setupTestEnvironment() {
     process.env.LIBRECHAT_AGENT_MODEL = 'gpt-4o';
 
     // Test MongoDB configuration
-    process.env.MONGODB_CONNECTION_STRING = 'mongodb://localhost:27017/TestLibreChat';
+    process.env.MONGO_URI = 'mongodb://localhost:27017/TestLibreChat';
     process.env.MONGODB_DATABASE = 'TestLibreChat';
     process.env.MCP_MONGODB_TIMEOUT = '5000';
     process.env.MCP_MONGODB_RETRIES = '2';

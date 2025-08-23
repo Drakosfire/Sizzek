@@ -451,7 +451,7 @@ const groceryUISchema = {
 MCP_STORAGE_TYPE=mongodb
 
 # ===== MONGODB STORAGE =====
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=user_grocery_data
 
@@ -625,7 +625,7 @@ mcpServers:
     env:
       MCP_STORAGE_TYPE: "mongodb"
       MCP_USER_BASED: "true"
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"
+      MONGO_URI: "mongodb://localhost:27017/LibreChat"
       MCP_USER_ID: "${USER_ID}"
       GROCERY_DEFAULT_STORE: "Kroger"
       MCP_WEB_UI_BASE_URL: "http://localhost"

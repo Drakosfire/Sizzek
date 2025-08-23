@@ -202,7 +202,7 @@ Purpose: Validate envs, auth, retries, and safe logging.
 - Env vars:
   - `MCP_STORAGE_TYPE=json|mongodb`
   - JSON: `DATA_DIR`, `MCP_BACKUP_ENABLED`
-  - Mongo: `MONGODB_CONNECTION_STRING`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
+  - Mongo: `MONGO_URI`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
   - Review defaults: `NIGHT_REVIEW_TIME=09:00`, `NIGHT_DEFAULT_TTL_HOURS=12`
   - Timezone default: `NIGHT_DEFAULT_TZ=UTC`
 - Validation: fail-fast on Mongo when selected; validate HH:MM; validate TTL bounds (e.g., 1–36 hours)
@@ -364,7 +364,7 @@ MCP_DEBUG=false
 DATA_DIR=./data
 
 # Mongo (optional)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=night_thoughts
 

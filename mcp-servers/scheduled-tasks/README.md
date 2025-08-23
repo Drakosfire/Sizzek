@@ -37,7 +37,7 @@ LIBRECHAT_AGENT_ID=default
 LIBRECHAT_AGENT_MODEL=gpt-4o
 
 # MongoDB Connection (Required for user lookup)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 ```
 
@@ -62,7 +62,7 @@ No hardcoded conversation IDs needed - the system is fully dynamic and adaptive!
 | `LIBRECHAT_API_KEY` | Yes | API key for LibreChat |
 | `LIBRECHAT_AGENT_NAME` | Yes | Agent name for user lookup |
 | `LIBRECHAT_AGENT_ID` | Yes | Agent ID for routing |
-| `MONGODB_CONNECTION_STRING` | Yes | MongoDB connection string |
+| `MONGO_URI` | Yes | MongoDB connection string |
 
 ### Optional Settings
 
@@ -253,7 +253,7 @@ mcpServers:
       LIBRECHAT_AGENT_NAME: "sizzek"
       LIBRECHAT_AGENT_ID: "default"
       LIBRECHAT_AGENT_MODEL: "gpt-4.1"
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"
+      MONGO_URI: "mongodb://localhost:27017/LibreChat"
       MONGODB_DATABASE: "LibreChat"
 ```
 
@@ -302,7 +302,7 @@ LIBRECHAT_AGENT_ID=default
 LIBRECHAT_AGENT_MODEL=gpt-4.1
 
 # MongoDB Connection (Required for user lookup)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 
 # Optional Configuration

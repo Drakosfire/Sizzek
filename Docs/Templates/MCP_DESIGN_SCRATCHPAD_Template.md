@@ -112,7 +112,7 @@ Checklist:
 Env loading notes (unified loader to adopt in implementation):
 - Support `ENV_PATH` to explicitly point to the `.env` file
 - Otherwise search `.env.local`, `.env`, and `.env.production` (when `NODE_ENV=production`) in project root and one level up
-- Normalize Mongo vars so either `MONGODB_URI` or `MONGODB_CONNECTION_STRING` works (set both if only one provided)
+- Normalize Mongo vars so either `MONGODB_URI` or `MONGO_URI` works (set both if only one provided)
 - Mask secrets in startup logs and print which env file was used
 
 ---

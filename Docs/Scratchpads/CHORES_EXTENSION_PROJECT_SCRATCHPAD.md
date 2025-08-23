@@ -71,7 +71,7 @@ Decision: Start as a `todoodles` extension. Split into a dedicated "chores" MCP 
 - Paths/buckets/collections: JSON baseDir `DATA_DIR` or Mongo collection `user_todoodles` extended with `chores` map.
 - Configuration & env vars:
   - `MCP_STORAGE_TYPE`: json|mongodb [required] (default: json)
-  - `MONGODB_CONNECTION_STRING`: Mongo URI [optional]
+  - `MONGO_URI`: Mongo URI [optional]
   - `MONGODB_DATABASE`: DB name [optional]
   - `MONGODB_COLLECTION`: collection name [optional] (default: user_todoodles)
   - `MCP_BACKUP_ENABLED`: JSON backups [optional] (default: false)

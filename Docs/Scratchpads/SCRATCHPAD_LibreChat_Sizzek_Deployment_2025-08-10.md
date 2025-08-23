@@ -203,7 +203,7 @@ sudo nginx -t && sudo systemctl reload nginx
   - Standardized MCP server environment loading and remote secrets deployment.
     - Generic dotenv loader added to: `mcp-servers/{memory,movies,grocery-list,todoodles,scheduled-tasks,twilio-sms,google-calendar-mcp}` entry files.
     - Load order: `ENV_PATH` (if set) → `.env.local` → `.env` → `.env.production` (when `NODE_ENV=production`).
-    - Normalized Mongo vars so either `MONGODB_URI` or `MONGODB_CONNECTION_STRING` is accepted; both are set when only one exists.
+    - Normalized Mongo vars so either `MONGODB_URI` or `MONGO_URI` is accepted; both are set when only one exists.
     - Startup logs now mask credentials and print the resolved env file path.
   - Remote secrets procedure
     - Local staging: `Sizzek/secrets-deploy/<server>/.env`
@@ -226,11 +226,11 @@ sudo nginx -t && sudo systemctl reload nginx
     - Print env in runtime: `printenv | grep -E '^MONGODB_|^TWILIO_|^GOOGLE_'`
     - Sanity check values:
       ```bash
-      node -e "console.log(process.env.MONGODB_URI||process.env.MONGODB_CONNECTION_STRING, process.env.MONGODB_DATABASE, process.env.MONGODB_COLLECTION||process.env.MONGODB_COLLECTION_PREFIX)"
+      node -e "console.log(process.env.MONGODB_URI||process.env.MONGO_URI, process.env.MONGODB_DATABASE, process.env.MONGODB_COLLECTION||process.env.MONGODB_COLLECTION_PREFIX)"
       ```
     - DB collections/counts (requires mongosh):
       ```bash
-      mongosh "$MONGODB_CONNECTION_STRING/$MONGODB_DATABASE" --eval "db.getCollectionNames().forEach(c=>print(c, db[c].countDocuments()))"
+      mongosh "$MONGO_URI/$MONGODB_DATABASE" --eval "db.getCollectionNames().forEach(c=>print(c, db[c].countDocuments()))"
       ```
   - Notes
     - Keep provider secrets (TWILIO_*, GOOGLE_*, API keys) only in remote `.env` files; never commit.
@@ -324,3 +324,303 @@ sudo nginx -t && sudo systemctl reload nginx
       2. Rebuild all MCP servers to pick up the new `mcp-web-ui@1.1.0` package
       3. Test that URLs are no longer malformed
       4. Verify ephemeral web UI functionality works correctly
+
+- 2025-08-18
+  - **🔒 CRITICAL: LibreChat MongoDB Security Hardening**
+    - **Vulnerability Identified**: LibreChat running with `--noauth` and exposed MongoDB port 27017
+    - **Security Fixes Applied**:
+      - **MongoDB Authentication**: Enabled `--auth` in docker-compose.yml and deploy-compose.yml
+      - **User Creation**: Created `librechat_user` with `readWrite` and `dbAdmin` roles
+      - **Environment Variables**: Added `MONGO_PASSWORD`, `MONGO_ROOT_PASSWORD`, proper `authSource` configuration
+      - **Health Checks**: Added MongoDB health checks with proper authentication
+      - **Port Security**: Removed MongoDB port exposure (27017) from internet
+    - **Configuration Changes**:
+      - `LibreChat/docker-compose.yml`: Added auth, health checks, env_file loading
+      - `LibreChat/deploy-compose.yml`: Production security hardening, local Dockerfile builds
+      - `LibreChat/mongodb/init-scripts/01-create-librechat-user.js`: User creation script
+      - `LibreChat/env.secure.example`: Secure environment template
+      - `LibreChat/SECURITY_SETUP.md`: Security documentation and procedures
+    - **Deployment Automation**:
+      - `LibreChat/build-local.sh`: Local build and testing script
+      - `LibreChat/deploy-to-server.sh`: Secure server deployment script
+    - **Security Status**: MongoDB now properly authenticated, no longer exposed to internet
+
+  - **🌐 Nginx Configuration Security Hardening**
+    - **Conflict Resolution**: Fixed conflicting server_name configurations for sizzek.dungeonmind.net
+    - **Security Enhancements**:
+      - **Rate Limiting**: Added `limit_req_zone` and `limit_req` directives
+      - **SSL/TLS Hardening**: Enhanced SSL protocols, ciphers, session caching
+      - **Security Headers**: Added X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, Content-Security-Policy
+      - **File Access Control**: Blocked access to hidden files and backup files
+      - **Health Endpoints**: Added `/health` endpoints for monitoring
+    - **Configuration Changes**:
+      - `DungeonMind/nginx/dungeonmind.net`: Removed conflicting MCP routes, enhanced security
+      - `DungeonMind/nginx/sizzek.dungeonmind.net`: Enhanced security headers, rate limiting
+      - `DungeonMind/nginx/deploy-all-configs.sh`: Nginx deployment automation
+      - `DungeonMind/nginx/security-monitor.sh`: Security monitoring script
+    - **Domain Separation**: Removed MCP UI routes from dungeonmind.net to avoid conflicts with sizzek.dungeonmind.net
+    - **Security Status**: Nginx configurations hardened with modern security practices
+
+  - **📋 Next Priority: Deployment and Testing**
+    - **Immediate Actions**:
+      1. Deploy updated nginx configurations to server
+      2. Test LibreChat authentication with new MongoDB user
+      3. Verify ephemeral MCP web UI functionality on sizzek.dungeonmind.net
+      4. Monitor security logs for any unauthorized access attempts
+    - **Security Monitoring**: Implement ongoing monitoring for MongoDB access attempts and nginx security events
+    - **Documentation**: Update deployment guides with new security requirements and procedures
+    - **🔒 Container Security Consolidation**: 
+      - **Goal**: Move all services into unified container environment for better security isolation
+      - **Current State**: Multiple separate containers (LibreChat, MongoDB, MCP servers, nginx) with complex networking
+      - **Target State**: Single containerized environment with internal networking, no external port exposure
+      - **Benefits**: Reduced attack surface, simplified security management, unified monitoring
+      - **Implementation**: 
+        1. Create unified docker-compose stack for all services
+        2. Remove external port exposures (27017, 3080, etc.)
+        3. Implement internal service discovery and communication
+        4. Add unified logging and monitoring
+        5. Create single deployment pipeline
+
+  - **🔧 LibreChat Container Build Issues (Current Blockers)**
+    - **Local Build Error**: `Cannot find module '/app/node_modules/@librechat/api/dist/index.js'`
+      - **Root Cause**: `npm prune --production` removes workspace dependencies after building
+      - **Investigation Steps**:
+        1. ✅ Verified `packages/api/dist/index.js` exists in source
+        2. ✅ Confirmed Dockerfile runs `npm run frontend` which includes API build
+        3. ❌ Found `npm prune --production` removes built workspace packages
+        4. ✅ Identified workspace dependency linking issue
+      - **Solution Applied**: 
+        - Modified Dockerfile to explicitly build all packages before frontend
+        - Removed `npm prune --production` to preserve built workspace packages
+        - Added explicit build steps: `npm run build:data-provider && npm run build:data-schemas && npm run build:api && npm run build:client-package`
+      - **Debug Commands**:
+        ```bash
+        # Check Dockerfile build stages
+        cat LibreChat/Dockerfile
+        cat LibreChat/Dockerfile.multi
+        
+        # Verify package.json scripts
+        grep -A 10 '"scripts"' LibreChat/package.json
+        
+        # Test build locally
+        cd LibreChat && npm run build:api
+        
+        # Verify built packages exist
+        ls -la LibreChat/packages/api/dist/
+        ```
+    - **Remote MongoDB Permission Error**: `Permission denied [system:13]: "/data/db/journal"`
+      - **Root Cause**: MongoDB container running as wrong user or volume permissions issue
+      - **Investigation Steps**:
+        1. Check MongoDB container user/group configuration
+        2. Verify volume mount permissions on host
+        3. Check if data directory ownership is correct
+        4. Ensure Docker volume permissions are set properly
+      - **Debug Commands**:
+        ```bash
+        # Check container user
+        docker exec -it chat-mongodb id
+        
+        # Check volume permissions
+        ls -la /path/to/mongodb/data/
+        
+        # Check Docker volume info
+        docker volume ls
+        docker volume inspect <volume_name>
+        
+        # Fix permissions if needed
+        sudo chown -R 999:999 /path/to/mongodb/data/
+        ```
+      - **Quick Fix**: Add `user: "999:999"` to MongoDB service in docker-compose.yml
+    - **Next Steps**:
+      1. ✅ Fix LibreChat Dockerfile build process (completed)
+      2. Resolve MongoDB volume permissions
+      3. Test local builds before remote deployment
+      4. Update deployment scripts with proper error handling
+
+- 2025-08-19 
+  - **🔧 LibreChat Dockerfile Build Issue - ROOT CAUSE IDENTIFIED**
+    - **Problem**: Container still failing with `Cannot find module '/app/node_modules/@librechat/api/dist/index.js'`
+    - **Root Cause Analysis**: 
+      - ✅ `packages/api/dist/index.js` exists in source code
+      - ✅ **Local build works**: `npm run build:api` succeeds outside container
+      - ❌ **CRITICAL FINDING**: Build process crashes with JavaScript heap out of memory in Docker
+      - ❌ **FATAL ERROR**: `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`
+      - ❌ **DOCKER BUILD DECEPTION**: Docker reports build success despite npm crash due to `--force` flag
+      - ❌ **NEW FINDING**: Package-lock.json out of sync causing multi-stage build to fail
+    - **Deeper Investigation**:
+      - **Local vs Container**: Build works locally but fails in Docker environment
+      - **Memory Issue**: Even 4GB insufficient for Docker build (container memory constraints)
+      - **Package Lock**: `npm ci` fails due to package-lock.json mismatch with package.json
+      - **npm --force behavior**: When process crashes, npm uses `--force` and reports success
+      - **Verification**: `/app/packages/api/dist/` directory doesn't exist in built container
+    - **Updated Solution**: 
+      - **Fix package-lock.json**: Run `npm install` to sync package-lock.json with package.json
+      - **Alternative approach**: Use pre-built packages or different build strategy
+      - **Memory optimization**: Consider building packages separately or using different Node.js version
+    - **Key Learning**: 
+      - **Never trust Docker build success blindly**
+      - **Always check for npm --force warnings in build logs**
+      - **Verify build artifacts exist in the container**
+      - **Package-lock.json drift can cause build failures**
+    - **Verification**: 
+      - 🔄 Ready for testing with package-lock.json fix
+    - **Next**: Fix package-lock.json and test Docker build
+
+- 2025-08-19
+  - **🎉 LibreChat Dockerfile Build Issue - RESOLVED!**
+    - **BREAKTHROUGH**: Identified **redundant package building** as the root cause
+    - **The Problem**: Dockerfile was building packages, then running `npm run frontend` which builds packages again
+    - **Root Cause**: 
+      - Dockerfile: `npm run build:data-provider && npm run build:data-schemas && npm run build:api && npm run build:client-package`
+      - Then: `npm run frontend` which includes: `npm run build:data-provider && npm run build:data-schemas && npm run build:api && npm run build:client-package && cd client && npm run build`
+      - **Result**: Packages built twice, causing memory exhaustion
+    - **Solution Applied**: 
+      - Changed Dockerfile from `npm run frontend` to `cd client && npm run build`
+      - Eliminated redundant package builds
+      - Kept symlinks for workspace packages
+    - **Result**: ✅ **Container builds successfully without memory errors**
+    - **Key Learning**: 
+      - **Always trace through build scripts to understand what they actually do**
+      - **Redundant operations can cause resource exhaustion**
+      - **The obvious fix isn't always the right fix - dig deeper into the process**
+    - **Status**: ✅ **RESOLVED** - LibreChat container now builds and runs successfully
+
+- 2025-08-20
+  - **🔧 SMS Router Security & Configuration Optimization**
+    - **Problem**: Hardcoded URLs and poor configuration management in SMS router
+    - **Issues Found**:
+      - Hardcoded IP address `100.92.179.100:3081` in default endpoint
+      - Hardcoded webhook URL `https://www.dungeonmind.net/api/sms/receive`
+      - No configuration validation on startup
+      - Sensitive data logged in headers
+      - Fixed retry/timeout values
+    - **Security Improvements Applied**:
+      - **Centralized Configuration Class**: Created `SMSConfig` class with validation
+      - **Environment Variable Management**: All hardcoded values moved to env vars
+      - **Configuration Validation**: Startup validation prevents misconfiguration
+      - **Secure Logging**: Authorization headers masked in logs
+      - **Flexible Endpoints**: Easy to change from `sizzek.dungeonmind.net:3081` to `sizzek.dungeonmind.net:3001`
+    - **New Environment Variables**:
+      - `EXTERNAL_SMS_ENDPOINT=https://sizzek.dungeonmind.net:3001/api/receive-sms`
+      - `TWILIO_WEBHOOK_URL=https://www.dungeonmind.net/api/sms/receive`
+      - `SMS_MAX_RETRIES=3`, `SMS_RETRY_DELAY=1`, `SMS_REQUEST_TIMEOUT=10`
+    - **Benefits**:
+      - **Security**: No hardcoded credentials or URLs
+      - **Flexibility**: Easy endpoint changes without code modifications
+      - **Maintainability**: Centralized configuration management
+      - **Observability**: Better logging without sensitive data exposure
+      - **Validation**: Prevents deployment with missing configuration
+    - **Next Steps**: Update production environment variables and test SMS flow
+
+- 2025-08-20 (Continued)
+  - **✅ SMS Router Forwarding Working**
+    - **Status**: SMS router successfully forwarding messages to external endpoint
+    - **Current Flow**: Twilio → DungeonMind SMS Router → External Endpoint
+    - **Next Priority**: Configure SMS reception and routing into Docker container
+    - **Target**: Ensure SMS messages are properly received and routed into LibreChat container
+    - **Requirements**:
+      - Verify Sizzek MCP server is running on correct port (3001)
+      - Ensure SMS messages flow through to LibreChat conversations
+      - Test end-to-end SMS → LibreChat → AI response flow
+    - **Configuration Needed**:
+      - Update `EXTERNAL_SMS_ENDPOINT` to point to correct Sizzek port
+      - Ensure Sizzek MCP server is accessible from DungeonMind
+      - Verify LibreChat external message API is working
+
+- 2025-08-20 (Continued)
+  - **🔧 LibreChat Container MCP Server Integration**
+    - **Problem**: LibreChat container can't access MCP servers built outside container
+    - **Root Cause**: Relative paths like `../Sizzek/mcp-servers/` don't exist inside container
+    - **Solution Applied**: Volume mounting MCP server directories into container
+    - **Changes Made**:
+      - **Docker Compose**: Added volume mount for MCP server binaries only
+        ```yaml
+        volumes:
+          - ../Sizzek/mcp-servers:/app/mcp-servers:ro
+        ```
+      - **LibreChat Config**: Updated all MCP server paths to use absolute container paths
+        - `../Sizzek/mcp-servers/memory/dist/index.js` → `/app/mcp-servers/memory/dist/index.js`
+        - `../Sizzek/mcp-servers/todoodles/dist/index.js` → `/app/mcp-servers/todoodles/dist/index.js`
+        - `../Sizzek/mcp-servers/twilio-sms/dist/index.js` → `/app/mcp-servers/twilio-sms/dist/index.js`
+        - And all other MCP servers updated similarly
+      - **Removed**: Credential and memory file mounts (not needed - MCP servers handle their own config)
+    - **Architecture**:
+      - **MCP Servers**: Run as host processes outside container
+      - **Configuration**: MCP servers read their own `.env` files from host filesystem
+      - **Networking**: MCP servers connect to MongoDB via `localhost:27017` (secure localhost-only binding)
+      - **LibreChat Container**: Only needs access to compiled MCP server binaries
+    - **Security Enhancement**:
+      - **MongoDB Port**: Exposed only to localhost (`127.0.0.1:27017:27017`)
+      - **External Access**: Blocked - MongoDB not accessible from internet
+      - **MCP Access**: Allowed - MCP servers can connect via localhost
+      - **Production Safe**: Prevents external MongoDB access while enabling local development
+    - **Benefits**:
+      - **Clean Separation**: MCP servers handle their own configuration and credentials
+      - **Security**: No sensitive data mounted into container
+      - **Flexibility**: MCP servers can be updated outside container and changes are immediately available
+      - **Simplicity**: Minimal volume mounts needed
+    - **Next Steps**: Restart LibreChat container and test MCP server functionality
+
+- 2025-08-20 (Continued)
+  - **🔧 LibreChat Configuration Mount Fix**
+    - **Problem**: LibreChat container not recognizing MCP servers or configuration
+    - **Root Cause**: `librechat.yaml` file not mounted into container
+    - **Error**: `ENOENT: no such file or directory, open '/app/librechat.yaml'`
+    - **Solution**: Added volume mount for `librechat.yaml` in docker-compose.yml
+      ```yaml
+      volumes:
+        - ./librechat.yaml:/app/librechat.yaml:ro
+      ```
+    - **Status**: ✅ **FIXED** - Container now has access to MCP server configuration
+    - **Next**: Rebuild container to pick up new volume mount
+
+- 2025-08-20 (Continued)
+  - **🔧 MCP Dependencies Installation Fix**
+    - **Problem**: MCP servers failing with `ERR_MODULE_NOT_FOUND: Cannot find package 'mcp-data'`
+    - **Root Cause**: MCP servers need Node.js dependencies (`mcp-data`, `@modelcontextprotocol/sdk`, etc.) but only compiled binaries were mounted
+    - **Solution**: Created entrypoint script to install MCP dependencies inside container
+      - `LibreChat/entrypoint.sh`: Installs npm dependencies for all MCP servers before starting LibreChat
+      - Updated `docker-compose.yml` to use entrypoint script
+    - **Status**: ✅ **FIXED** - Container will now install required MCP dependencies on startup
+    - **Next**: Rebuild container to test MCP server functionality
+
+- 2025-08-20 (Continued)
+  - **🔧 MCP Environment Variable Standardization**
+    - **Problem**: Multiple MCP servers have similar environment variable requirements but individual `.env` files
+    - **Solution**: Create a shared `.env.sizzek` file for common MCP server configuration
+    - **Goal**: Standardize MongoDB connection strings, API keys, and common settings across all MCP servers
+    - **Benefits**:
+      - **Consistency**: All MCP servers use same MongoDB connection and base configuration
+      - **Maintainability**: Single source of truth for common settings
+      - **Deployment**: Easier to manage one shared config file
+      - **Security**: Centralized credential management
+    - **Next Priority**: Update MCP server environment variable imports to use shared `.env.sizzek` file
+    - **Implementation Plan**:
+      1. Create `.env.sizzek` with common variables (MongoDB, API keys, etc.)
+      2. Update each MCP server to import from shared config
+      3. Maintain server-specific variables in individual `.env` files
+      4. Test that all MCP servers can access shared configuration
+    - **✅ COMPLETED**: Updated all MCP servers to load shared `.env.sizzek` file
+      - **Updated Servers**: memory, todoodles, twilio-sms, grocery-list, movies, scheduled-tasks, google-calendar-mcp
+      - **Load Order**: `ENV_PATH` → `Sizzek/config/.env.sizzek` → `.env.local` → `.env` → `.env.production`
+      - **Implementation**: Added shared config path to each server's `loadEnv` function
+      - **Benefits**: All MCP servers now load common configuration from unified source
+    - **✅ COMPLETED**: CI/CD Build Script Updates
+      - **Moved**: `build-all-mcps.sh` to `Sizzek/ci-cd/` directory
+      - **Enhanced**: Added unified environment configuration verification
+      - **Features**: 
+        - Verifies `.env.sizzek` exists and contains required variables
+        - Checks for `MONGO_URI` and `MCP_STORAGE_TYPE`
+        - Provides clear error messages if configuration is missing
+        - Maintains backward compatibility with remote deployment
+      - **Organization**: All CI/CD scripts now centralized in `ci-cd/` directory
+    - **File Organization**:
+      - **Shared Config**: `Sizzek/config/.env.sizzek` - Common MCP server variables
+      - **Credentials**: `Sizzek/credentials/` - API keys, OAuth secrets, etc.
+      - **Server Configs**: Individual `.env` files in each MCP server directory
+    - **Common Variables to Standardize**:
+      - `MONGO_URI=mongodb://localhost:27017/LibreChat`
+      - `MCP_STORAGE_TYPE=mongodb`
+      - `MCP_USER_BASED=true`
+      - API keys and authentication tokens
+      - Base URLs and endpoints

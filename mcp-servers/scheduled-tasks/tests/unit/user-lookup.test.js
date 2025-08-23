@@ -493,7 +493,7 @@ runner.test('createUserLookupService factory works correctly', async () => {
     const originalEnv = { ...process.env };
 
     try {
-        process.env.MONGODB_CONNECTION_STRING = 'mongodb://factory-test';
+        process.env.MONGO_URI = 'mongodb://factory-test';
         process.env.MONGODB_DATABASE = 'FactoryTest';
         process.env.MCP_MONGODB_TIMEOUT = '7000';
         process.env.MCP_MONGODB_RETRIES = '5';

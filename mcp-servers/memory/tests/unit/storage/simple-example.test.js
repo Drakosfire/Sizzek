@@ -13,7 +13,7 @@ describe('Memory MCP Server Testing - Example', function () {
             assert.strictEqual(process.env.NODE_ENV, 'test');
             console.log('✅ Environment: test');
 
-            assert(process.env.MONGODB_CONNECTION_STRING);
+            assert(process.env.MONGO_URI);
             console.log('✅ MongoDB connection string configured');
 
             assert(process.env.MONGODB_TEST_DATABASE);
@@ -22,16 +22,16 @@ describe('Memory MCP Server Testing - Example', function () {
 
         it('should be able to import mcp-data package', async function () {
             try {
-                const { PaginatedGraphStorage, StorageFactory } = await import('@sizzek/mcp-data');
+                const { PaginatedGraphStorage, StorageFactory } = await import('mcp-data');
 
                 assert(PaginatedGraphStorage, 'PaginatedGraphStorage should be available');
                 assert(StorageFactory, 'StorageFactory should be available');
 
-                console.log('✅ @sizzek/mcp-data package imported successfully');
+                console.log('✅ mcp-data package imported successfully');
                 console.log('✅ PaginatedGraphStorage available');
                 console.log('✅ StorageFactory available');
             } catch (error) {
-                assert.fail(`Failed to import @sizzek/mcp-data: ${error.message}`);
+                assert.fail(`Failed to import mcp-data: ${error.message}`);
             }
         });
     });

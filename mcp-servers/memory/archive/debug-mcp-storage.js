@@ -52,7 +52,7 @@ class MCPStorageDebugger {
         const requiredVars = [
             'MCP_STORAGE_TYPE',
             'MCP_USER_BASED',
-            'MONGODB_CONNECTION_STRING',
+            'MONGO_URI',
             'MONGODB_DATABASE',
             'MONGODB_COLLECTION'
         ];
@@ -76,7 +76,7 @@ class MCPStorageDebugger {
             if (configExists) {
                 const config = await fs.readFile(librechatConfigPath, 'utf-8');
                 const hasMemoryServer = config.includes('memory:');
-                const hasMongoDBConfig = config.includes('MONGODB_CONNECTION_STRING');
+                const hasMongoDBConfig = config.includes('MONGO_URI');
                 const hasUserBased = config.includes('MCP_USER_BASED');
 
                 console.log(`📋 LibreChat config analysis:`);

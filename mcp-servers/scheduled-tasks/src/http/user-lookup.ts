@@ -192,7 +192,7 @@ export class UserLookupService {
 // Factory function to create user lookup service from environment
 export function createUserLookupService(): UserLookupService {
     const config: UserLookupConfig = {
-        connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
+        connectionString: process.env.MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
         databaseName: process.env.MONGODB_LIBRECHAT_DB || 'LibreChat',
         timeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
         maxRetries: parseInt(process.env.MCP_MONGODB_RETRIES || '3'),

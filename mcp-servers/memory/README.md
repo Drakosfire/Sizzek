@@ -156,7 +156,7 @@ mcpServers:
       # MongoDB Configuration (REQUIRED for LibreChat integration)
       MCP_STORAGE_TYPE: "paginated-graph"
       MCP_USER_BASED: "true"
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017/LibreChat"  # HOST connection!
+      MONGO_URI: "mongodb://localhost:27017/LibreChat"  # HOST connection!
       MONGODB_DATABASE: "LibreChat"
       MONGODB_COLLECTION_PREFIX: "mcp_memory"
       MCP_USER_ID: "${USER_ID}"  # LibreChat provides this automatically
@@ -179,7 +179,7 @@ The server supports multiple configuration methods:
 # MongoDB Configuration (Recommended for LibreChat)
 MCP_STORAGE_TYPE=paginated-graph
 MCP_USER_BASED=true
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION_PREFIX=mcp_memory
 MCP_USER_ID=${USER_ID}
@@ -232,7 +232,7 @@ For debugging, the server includes comprehensive logging:
 ```javascript
 // Environment verification
 console.log('[Memory MCP] Environment loaded:', {
-  MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING ? 'SET' : 'MISSING',
+  MONGO_URI: process.env.MONGO_URI ? 'SET' : 'MISSING',
   MONGODB_DATABASE: process.env.MONGODB_DATABASE,
   MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
   MCP_USER_BASED: process.env.MCP_USER_BASED
@@ -470,7 +470,7 @@ client.connect().then(() => {
 node -e "
 require('dotenv').config();
 console.log('Environment check:', {
-  MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING ? 'SET' : 'MISSING',
+  MONGO_URI: process.env.MONGO_URI ? 'SET' : 'MISSING',
   MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
   MCP_USER_BASED: process.env.MCP_USER_BASED
 });

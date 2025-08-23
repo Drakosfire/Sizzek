@@ -50,11 +50,11 @@ function loadEnv(serverLabel: string) {
     if (!usedPath) dotenv.config();
 
     // Normalize Mongo env vars for cross-compat
-    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+        process.env.MONGO_URI = process.env.MONGODB_URI;
     }
-    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+        process.env.MONGODB_URI = process.env.MONGO_URI;
     }
 
     const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');

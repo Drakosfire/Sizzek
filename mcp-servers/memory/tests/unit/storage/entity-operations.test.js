@@ -455,7 +455,7 @@ describe('PaginatedGraphStorage - Entity Operations', function () {
     describe('Error Handling', function () {
         it('should handle database connection errors gracefully', async function () {
             // Create storage with invalid connection
-            const { PaginatedGraphStorage } = await import('@sizzek/mcp-data');
+            const { PaginatedGraphStorage } = await import('mcp-data');
             const invalidStorage = new PaginatedGraphStorage('mongodb://invalid:27017', 'invalid_db');
 
             try {

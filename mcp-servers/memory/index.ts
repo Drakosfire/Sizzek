@@ -47,11 +47,11 @@ function loadEnv(serverLabel: string) {
   if (!usedPath) dotenv.config();
 
   // Normalize Mongo env vars for cross-compat
-  if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-    process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+  if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+    process.env.MONGO_URI = process.env.MONGODB_URI;
   }
-  if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-    process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+  if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+    process.env.MONGODB_URI = process.env.MONGO_URI;
   }
 
   const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
@@ -104,7 +104,7 @@ class UserAwareKnowledgeGraphManager {
     // Debug specific variables we care about
     log('DEBUG', 'MCP Storage Config', {
       MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
-      MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING,
+      MONGO_URI: process.env.MONGO_URI,
       MONGODB_DATABASE: process.env.MONGODB_DATABASE,
       MONGODB_COLLECTION_PREFIX: process.env.MONGODB_COLLECTION_PREFIX,
       MCP_USER_ID: process.env.MCP_USER_ID,

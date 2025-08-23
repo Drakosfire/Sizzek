@@ -33,7 +33,7 @@ MCP_USER_BASED=false
 **For MongoDB Storage:**
 ```bash
 MCP_STORAGE_TYPE=mongodb
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=scheduled_tasks
 MCP_USER_BASED=true
@@ -79,7 +79,7 @@ MCP_BACKUP_INTERVAL=60         # minutes
 
 ```bash
 # Connection
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=scheduled_tasks
 
@@ -223,7 +223,7 @@ User3: { tasks: [...], metadata: {...} }
 
 2. **Configure test environment:**
    ```bash
-   export MONGODB_CONNECTION_STRING=mongodb://localhost:27017/test_scheduled_tasks
+   export MONGO_URI=mongodb://localhost:27017/test_scheduled_tasks
    export MCP_STORAGE_TYPE=mongodb
    export MCP_USER_BASED=true
    export MCP_USER_ID=test-user
@@ -266,7 +266,7 @@ The unified storage system makes it easy to add new backends:
    ```bash
    # In LibreChat's .env
    MCP_STORAGE_TYPE=mongodb
-   MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+   MONGO_URI=mongodb://localhost:27017/LibreChat
    MONGODB_DATABASE=LibreChat
    MCP_USER_BASED=true
    ```
@@ -296,7 +296,7 @@ MCP_DEBUG=true
 **MongoDB connection issues:**
 ```bash
 # Check connection string format
-MONGODB_CONNECTION_STRING=mongodb://username:password@host:port/database
+MONGO_URI=mongodb://username:password@host:port/database
 
 # Verify network connectivity
 ping your-mongodb-host

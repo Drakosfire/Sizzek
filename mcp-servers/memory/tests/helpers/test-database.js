@@ -20,7 +20,7 @@ class TestDatabase {
         const baseDbName = process.env.MONGODB_TEST_DATABASE || 'mcp_test_db';
         this.dbName = `${baseDbName}_${testName}_${Date.now()}`;
 
-        const connectionString = process.env.MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017';
+        const connectionString = process.env.MONGO_URI || 'mongodb://localhost:27017';
         this.connectionString = connectionString;
     }
 

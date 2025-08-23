@@ -45,6 +45,9 @@ describe('TaskStorageManager', () => {
         lastRun: undefined,
         nextRun: undefined,
         lastError: undefined,
+        creatorUserId: 'test-user',
+        sharedWith: [],
+        contextType: 'user',
         ...overrides
     });
 
@@ -195,7 +198,7 @@ describe('TaskStorageManager', () => {
     describe('MongoDB Storage Backend', () => {
         beforeEach(async () => {
             // Skip MongoDB tests if no connection string is provided
-            if (!process.env.MONGODB_CONNECTION_STRING) {
+            if (!process.env.MONGO_URI) {
                 console.log('Skipping MongoDB tests - no connection string provided');
                 return;
             }
@@ -205,7 +208,7 @@ describe('TaskStorageManager', () => {
                 userBased: true,
                 defaultUserId: 'test-user',
                 mongoConfig: {
-                    connectionString: process.env.MONGODB_CONNECTION_STRING,
+                    connectionString: process.env.MONGO_URI,
                     databaseName: 'test_scheduled_tasks',
                     collectionName: 'test_tasks',
                     timeout: 10000,
@@ -218,7 +221,7 @@ describe('TaskStorageManager', () => {
         });
 
         test('should initialize with MongoDB storage', async () => {
-            if (!process.env.MONGODB_CONNECTION_STRING) {
+            if (!process.env.MONGO_URI) {
                 console.log('Skipping MongoDB test - no connection string');
                 return;
             }
@@ -232,7 +235,7 @@ describe('TaskStorageManager', () => {
         });
 
         test('should save and load tasks with MongoDB', async () => {
-            if (!process.env.MONGODB_CONNECTION_STRING) {
+            if (!process.env.MONGO_URI) {
                 console.log('Skipping MongoDB test - no connection string');
                 return;
             }
@@ -262,7 +265,7 @@ describe('TaskStorageManager', () => {
         });
 
         test('should handle user isolation in MongoDB', async () => {
-            if (!process.env.MONGODB_CONNECTION_STRING) {
+            if (!process.env.MONGO_URI) {
                 console.log('Skipping MongoDB test - no connection string');
                 return;
             }
@@ -297,7 +300,7 @@ describe('TaskStorageManager', () => {
         });
 
         test('should handle large datasets in MongoDB', async () => {
-            if (!process.env.MONGODB_CONNECTION_STRING) {
+            if (!process.env.MONGO_URI) {
                 console.log('Skipping MongoDB test - no connection string');
                 return;
             }
@@ -443,7 +446,7 @@ describe('Environment-based Storage Configuration', () => {
 
     test('should configure MongoDB storage from environment', () => {
         process.env.MCP_STORAGE_TYPE = 'mongodb';
-        process.env.MONGODB_CONNECTION_STRING = 'mongodb://localhost:27017/test';
+        process.env.MONGO_URI = 'mongodb://localhost:27017/test';
         process.env.MONGODB_DATABASE = 'test_db';
         process.env.MONGODB_COLLECTION = 'test_collection';
         process.env.MCP_USER_BASED = 'true';

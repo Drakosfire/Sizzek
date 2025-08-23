@@ -24,6 +24,26 @@ const TESTS_CONFIG = [
         name: 'User Lookup Integration Tests',
         file: 'integration/user-lookup-integration.test.js',
         timeout: 90000 // 90 second timeout
+    },
+    {
+        name: 'User Context Utils Unit Tests',
+        jest: 'tests/unit/user-context.test.ts',
+        timeout: 60000 // 60 second timeout
+    },
+    {
+        name: 'Task Manager Context Unit Tests',
+        jest: 'tests/unit/task-manager-context.test.ts',
+        timeout: 120000 // 120 second timeout (includes file I/O)
+    },
+    {
+        name: 'Migration Unit Tests',
+        jest: 'tests/unit/migration.test.ts',
+        timeout: 120000 // 120 second timeout (includes large dataset tests)
+    },
+    {
+        name: 'User Context Integration Tests',
+        jest: 'tests/integration/user-context-integration.test.ts',
+        timeout: 180000 // 180 second timeout (end-to-end tests with mocks)
     }
 ];
 
@@ -103,6 +123,58 @@ async function runTestFile(testFile, timeout) {
     });
 }
 
+// Run Jest tests
+async function runJestTest(testPath, timeout) {
+    return new Promise((resolve, reject) => {
+        const child = spawn('npx', ['jest', testPath, '--verbose'], {
+            stdio: 'pipe',
+            env: { ...process.env, NODE_ENV: 'test' }
+        });
+
+        let stdout = '';
+        let stderr = '';
+        let isTimedOut = false;
+
+        // Set up timeout
+        const timeoutId = setTimeout(() => {
+            isTimedOut = true;
+            child.kill('SIGTERM');
+            reject(new Error(`Jest test "${testPath}" timed out after ${timeout}ms`));
+        }, timeout);
+
+        child.stdout.on('data', (data) => {
+            stdout += data;
+            process.stdout.write(data); // Pass through to console
+        });
+
+        child.stderr.on('data', (data) => {
+            stderr += data;
+            process.stderr.write(data); // Pass through to console
+        });
+
+        child.on('close', (code) => {
+            clearTimeout(timeoutId);
+
+            if (isTimedOut) {
+                return; // Already rejected
+            }
+
+            if (code === 0) {
+                resolve({ success: true, stdout, stderr });
+            } else {
+                reject(new Error(`Jest test "${testPath}" failed with exit code ${code}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`));
+            }
+        });
+
+        child.on('error', (error) => {
+            clearTimeout(timeoutId);
+            if (!isTimedOut) {
+                reject(new Error(`Failed to start Jest test "${testPath}": ${error.message}`));
+            }
+        });
+    });
+}
+
 // Run individual test
 async function runTest(testConfig) {
     const startTime = Date.now();
@@ -118,6 +190,13 @@ async function runTest(testConfig) {
             result = await runWithTimeout(
                 testConfig.runner(),
                 testConfig.timeout,
+                testConfig.name
+            );
+        } else if (testConfig.jest) {
+            // Run Jest test
+            result = await runWithTimeout(
+                runJestTest(testConfig.jest, testConfig.timeout),
+                testConfig.timeout + 5000, // Add 5 seconds buffer
                 testConfig.name
             );
         } else if (testConfig.file) {

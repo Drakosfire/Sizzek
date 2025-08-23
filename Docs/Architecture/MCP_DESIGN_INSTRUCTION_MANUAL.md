@@ -58,11 +58,11 @@ function loadEnv(serviceLabel: string) {
   if (!used) dotenv.config();
 
   // Normalize Mongo env names so either works
-  if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-    process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+  if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+    process.env.MONGO_URI = process.env.MONGODB_URI;
   }
-  if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-    process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+  if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+    process.env.MONGODB_URI = process.env.MONGO_URI;
   }
 
   const maskedUri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
@@ -166,7 +166,7 @@ MCP_USER_ID=${USER_ID}
 # JSON
 DATA_FILE_PATH=./data.json
 # Mongo
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=my_collection
 ```
@@ -279,7 +279,7 @@ MCP_USER_BASED=true
 MCP_USER_ID=${USER_ID}
 MCP_DEBUG=false
 DATA_FILE_PATH=./data.json
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=my_collection
 MCP_WEB_UI_BASE_URL=localhost

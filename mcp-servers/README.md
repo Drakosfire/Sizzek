@@ -166,7 +166,7 @@ mcpServers:
     command: node
     args: ["/path/to/mcp-servers/todoodles/dist/index.js"]
     env:
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017"
+      MONGO_URI: "mongodb://localhost:27017"
       MONGODB_DATABASE: "sizzek_mcp"
       STORAGE_TYPE: "mongodb"
       USER_ID: "user123"
@@ -178,7 +178,7 @@ mcpServers:
     command: node  
     args: ["/path/to/mcp-servers/memory/dist/index.js"]
     env:
-      MONGODB_CONNECTION_STRING: "mongodb://localhost:27017"
+      MONGO_URI: "mongodb://localhost:27017"
       MONGODB_DATABASE: "sizzek_mcp"
       STORAGE_TYPE: "mongodb"
     timeout: 30000
@@ -191,7 +191,7 @@ mcpServers:
 ### **Environment Configuration**
 ```bash
 # Required for all servers
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017
+MONGO_URI=mongodb://localhost:27017
 MONGODB_DATABASE=sizzek_mcp
 STORAGE_TYPE=mongodb  # or 'json' for file-based storage
 USER_ID=unique_user_identifier

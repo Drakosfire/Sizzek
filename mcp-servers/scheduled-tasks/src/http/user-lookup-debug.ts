@@ -224,7 +224,7 @@ export class UserLookupDebugService {
 // Factory function to create debug user lookup service from environment
 export function createDebugUserLookupService(): UserLookupDebugService {
     const config: UserLookupDebugConfig = {
-        connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
+        connectionString: process.env.MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
         databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
         timeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
         maxRetries: parseInt(process.env.MCP_MONGODB_RETRIES || '3'),

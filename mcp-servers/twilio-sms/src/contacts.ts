@@ -34,11 +34,11 @@ function loadEnv() {
     if (!used) dotenv.config();
 
     // Normalize Mongo env vars for cross-compat
-    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+        process.env.MONGO_URI = process.env.MONGODB_URI;
     }
-    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+        process.env.MONGODB_URI = process.env.MONGO_URI;
     }
 }
 loadEnv();
@@ -122,7 +122,7 @@ class ContactManager {
         const config = {
             type: storageType as 'json' | 'mongodb',
             mongodb: storageType === 'mongodb' ? {
-                connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
+                connectionString: process.env.MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
                 databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
                 collectionName: process.env.MONGODB_COLLECTION || 'twilio_contacts',
                 connectionTimeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
@@ -327,7 +327,7 @@ class ContactLookupService {
         this.config = {
             storageType: config.storageType || (process.env.MCP_STORAGE_TYPE as 'json' | 'mongodb') || 'json',
             jsonFilePath: config.jsonFilePath || process.env.TODOS_FILE_PATH || './memory_files/contacts.json',
-            mongoConnectionString: config.mongoConnectionString || process.env.MONGODB_CONNECTION_STRING,
+            mongoConnectionString: config.mongoConnectionString || process.env.MONGO_URI,
             mongoDatabaseName: config.mongoDatabaseName || process.env.MONGODB_CONTACT_DATABASE || 'LibreChat',
             mongoCollectionName: config.mongoCollectionName || process.env.MONGODB_COLLECTION || 'users',
             timeout: config.timeout || parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),

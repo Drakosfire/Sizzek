@@ -214,7 +214,7 @@ Purpose: Validate envs, auth, retries, and safe logging.
   - `MCP_STORAGE_TYPE=json|mongodb`
   - `MCP_USER_BASED=true`
   - JSON: `DATA_DIR` (optional)
-  - Mongo: `MONGODB_CONNECTION_STRING`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
+  - Mongo: `MONGO_URI`, `MONGODB_DATABASE`, `MONGODB_COLLECTION`
   - Scraping: `KITTEN_ALLOWED_DOMAINS`, `KITTEN_USER_AGENT`, `KITTEN_MAX_CONCURRENCY=2`, `KITTEN_REQUEST_TIMEOUT_MS=8000`, `KITTEN_MAX_DOWNLOAD_MB=5`, `KITTEN_DOWNLOAD_IMAGES=false`
 - Validation behavior: fail-fast on missing Mongo vars if selected; warn on empty allowlist; never log secrets
 - Timeouts/retries: 2 retries with exponential backoff for scraping; circuit-break per source
@@ -380,7 +380,7 @@ MCP_DEBUG=false
 DATA_DIR=./data
 
 # Mongo (optional)
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017/LibreChat
+MONGO_URI=mongodb://localhost:27017/LibreChat
 MONGODB_DATABASE=LibreChat
 MONGODB_COLLECTION=kittens
 

@@ -48,11 +48,11 @@ function loadEnv(serverLabel: string) {
     if (!usedPath) dotenv.config();
 
     // Normalize Mongo env vars for cross-compat
-    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+        process.env.MONGO_URI = process.env.MONGODB_URI;
     }
-    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+        process.env.MONGODB_URI = process.env.MONGO_URI;
     }
 
     const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
@@ -110,7 +110,7 @@ export class UserAwareTodoodlesManager {
         // Debug environment variables
         log('DEBUG', 'Environment variables', {
             MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
-            MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING?.replace(/\/\/.*@/, '//***@'), // Hide credentials
+            MONGO_URI: process.env.MONGO_URI?.replace(/\/\/.*@/, '//***@'), // Hide credentials
             MONGODB_DATABASE: process.env.MONGODB_DATABASE,
             MONGODB_COLLECTION: process.env.MONGODB_COLLECTION,
             MCP_USER_ID: process.env.MCP_USER_ID,
@@ -158,7 +158,7 @@ export class UserAwareTodoodlesManager {
             MCP_USER_ID: process.env.MCP_USER_ID || 'NOT_SET',
             MCP_USER_BASED: process.env.MCP_USER_BASED || 'NOT_SET',
             MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE || 'NOT_SET',
-            MONGODB_CONNECTION_STRING: process.env.MONGODB_CONNECTION_STRING ? '[SET]' : '[NOT_SET]',
+            MONGO_URI: process.env.MONGO_URI ? '[SET]' : '[NOT_SET]',
             MONGODB_DATABASE: process.env.MONGODB_DATABASE || 'NOT_SET',
             MONGODB_COLLECTION: process.env.MONGODB_COLLECTION || 'NOT_SET'
         });
@@ -558,7 +558,7 @@ export class UserAwareTodoodlesManager {
         const config = {
             type: storageType as 'json' | 'mongodb',
             mongodb: storageType === 'mongodb' ? {
-                connectionString: process.env.MONGODB_CONNECTION_STRING || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
+                connectionString: process.env.MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
                 databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
                 collectionName: process.env.MONGODB_COLLECTION || 'user_todoodles',
                 connectionTimeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),

@@ -14,7 +14,7 @@ export class MongoMovieStorage implements MovieStorageInterface {
     private retries: number;
 
     constructor() {
-        this.uri = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017/LibreChat';
+        this.uri = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat';
         this.dbName = process.env.MONGODB_DATABASE || 'mcp_data';
         this.collection = process.env.MONGODB_COLLECTION || 'user_movies';
         this.userBased = process.env.MCP_USER_BASED === 'true';

@@ -112,7 +112,7 @@ Load and scalability testing:
 
 ### Environment Variables (.env.test)
 ```bash
-MONGODB_CONNECTION_STRING=mongodb://localhost:27017
+MONGO_URI=mongodb://localhost:27017
 MONGODB_TEST_DATABASE=mcp_test_db
 MONGODB_COLLECTION_PREFIX=test_memory
 NODE_ENV=test

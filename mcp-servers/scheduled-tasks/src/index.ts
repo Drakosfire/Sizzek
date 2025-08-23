@@ -54,11 +54,11 @@ function loadEnv(serverLabel: string) {
     if (!usedPath) dotenv.config();
 
     // Back-compat for URI naming
-    if (!process.env.MONGODB_CONNECTION_STRING && process.env.MONGODB_URI) {
-        process.env.MONGODB_CONNECTION_STRING = process.env.MONGODB_URI;
+    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+        process.env.MONGO_URI = process.env.MONGODB_URI;
     }
-    if (!process.env.MONGODB_URI && process.env.MONGODB_CONNECTION_STRING) {
-        process.env.MONGODB_URI = process.env.MONGODB_CONNECTION_STRING;
+    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
+        process.env.MONGODB_URI = process.env.MONGO_URI;
     }
 
     console.error(`[${serverLabel}] Env loaded: ${usedPath || '(default)'}`);
@@ -83,7 +83,7 @@ console.error('RETRY_DELAY:', RETRY_DELAY);
 console.error('LIBRECHAT_AGENT_NAME:', process.env.LIBRECHAT_AGENT_NAME || '[NOT SET]');
 console.error('LIBRECHAT_AGENT_ID:', process.env.LIBRECHAT_AGENT_ID || '[NOT SET]');
 console.error('LIBRECHAT_AGENT_MODEL:', process.env.LIBRECHAT_AGENT_MODEL || '[NOT SET]');
-console.error('MONGODB_CONNECTION_STRING:', process.env.MONGODB_CONNECTION_STRING ? '[PRESENT]' : '[NOT SET]');
+console.error('MONGO_URI:', process.env.MONGO_URI ? '[PRESENT]' : '[NOT SET]');
 
 if (!LIBRECHAT_API_KEY) {
     console.error('Warning: LIBRECHAT_API_KEY not set. Tasks will only log messages instead of triggering LibreChat.');
@@ -92,7 +92,7 @@ if (!LIBRECHAT_API_KEY) {
 // Initialize User Lookup Service
 import { createUserLookupService } from './http/user-lookup.js';
 
-const userLookupService = process.env.MONGODB_CONNECTION_STRING
+const userLookupService = process.env.MONGO_URI
     ? createUserLookupService()
     : undefined;
 

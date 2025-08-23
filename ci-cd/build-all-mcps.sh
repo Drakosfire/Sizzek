@@ -78,10 +78,10 @@ if [[ -f "$CONFIG_DIR/.env.sizzek" ]]; then
   echo "✅ Found unified .env.sizzek configuration"
   
   # Check for required common variables
-  if grep -q "MONGODB_CONNECTION_STRING" "$CONFIG_DIR/.env.sizzek"; then
+  if grep -q "MONGO_URI" "$CONFIG_DIR/.env.sizzek"; then
     echo "✅ MongoDB connection string configured"
   else
-    echo "⚠️  WARNING: MONGODB_CONNECTION_STRING not found in .env.sizzek"
+    echo "⚠️  WARNING: MONGO_URI not found in .env.sizzek"
   fi
   
   if grep -q "MCP_STORAGE_TYPE" "$CONFIG_DIR/.env.sizzek"; then

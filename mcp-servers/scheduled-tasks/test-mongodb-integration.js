@@ -67,13 +67,13 @@ async function testStorageIntegration() {
     // Test 2: MongoDB Storage (if configured)
     console.log('\n🗄️  Testing MongoDB Storage:');
 
-    if (process.env.MONGODB_CONNECTION_STRING) {
+    if (process.env.MONGO_URI) {
         try {
             const mongoConfig = {
                 storageType: 'mongodb',
                 userBased: true,
                 mongoConfig: {
-                    connectionString: process.env.MONGODB_CONNECTION_STRING,
+                    connectionString: process.env.MONGO_URI,
                     databaseName: process.env.MONGODB_DATABASE || 'test_scheduled_tasks',
                     collectionName: 'test_tasks',
                     timeout: 10000,
@@ -116,11 +116,11 @@ async function testStorageIntegration() {
 
         } catch (error) {
             console.log(`   ❌ MongoDB Storage Test Failed: ${error.message}`);
-            console.log('   💡 Ensure MongoDB is running and MONGODB_CONNECTION_STRING is set');
+            console.log('   💡 Ensure MongoDB is running and MONGO_URI is set');
         }
     } else {
         console.log('   ⏭️  Skipping MongoDB test (no connection string configured)');
-        console.log('   💡 Set MONGODB_CONNECTION_STRING to test MongoDB integration');
+        console.log('   💡 Set MONGO_URI to test MongoDB integration');
     }
 
     // Test 3: TaskManager Integration
@@ -156,7 +156,7 @@ async function testStorageIntegration() {
     console.log('\n🎉 Storage Integration Tests Complete!');
     console.log('\nNext Steps:');
     console.log('   1. Set MCP_STORAGE_TYPE=mongodb in your .env to use MongoDB');
-    console.log('   2. Configure MONGODB_CONNECTION_STRING for your database');
+    console.log('   2. Configure MONGO_URI for your database');
     console.log('   3. Set MCP_USER_BASED=true for multi-user support');
     console.log('   4. The server will automatically migrate existing JSON data');
 }
