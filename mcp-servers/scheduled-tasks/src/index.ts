@@ -27,7 +27,9 @@ function loadEnv(serverLabel: string) {
 
     // Add shared .env.sizzek file from config directory
     const sharedEnvPath = path.resolve(__dirname, '..', '..', '..', 'config', '.env.sizzek');
+    const containerSharedEnvPath = '/app/config/.env.sizzek';
     candidates.push(sharedEnvPath);
+    candidates.push(containerSharedEnvPath);
 
     const dirCandidates = [
         path.resolve(__dirname, '..', '..'), // compiled dist/src -> project root
