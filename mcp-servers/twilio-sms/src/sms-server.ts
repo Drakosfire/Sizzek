@@ -25,8 +25,19 @@ import { ContactManager } from './contacts.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment from inherited environment variables
+// Load environment from inherited environment variables or ENV_PATH
 function loadEnv(serverLabel: string) {
+    // Try to load from ENV_PATH first
+    const envPath = process.env.ENV_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+        const result = dotenv.config({ path: envPath });
+        if (result.error) {
+            console.error(`[${serverLabel}] Error loading env file from ${envPath}:`, result.error);
+        } else {
+            console.error(`[${serverLabel}] Loaded env file from: ${envPath}`);
+        }
+    }
+
     // Check if we have inherited environment variables from parent process
     const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
     const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';

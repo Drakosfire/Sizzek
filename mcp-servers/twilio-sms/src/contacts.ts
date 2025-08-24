@@ -8,22 +8,25 @@ import { MongoClient, Db, Collection, ObjectId } from 'mongodb';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment from inherited environment variables
+// Load environment from inherited environment variables or ENV_PATH
 function loadEnv() {
+    // Try to load from ENV_PATH first
+    const envPath = process.env.ENV_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+        const result = dotenv.config({ path: envPath });
+        if (result.error) {
+            console.error(`[Twilio-SMS] Error loading env file from ${envPath}:`, result.error);
+        } else {
+            console.error(`[Twilio-SMS] Loaded env file from: ${envPath}`);
+        }
+    }
+
     // Check if we have inherited environment variables from parent process
     const envVarsPresent = process.env.LIBRECHAT_API_KEY || process.env.MONGO_URI;
     const usedPath = envVarsPresent ? '(inherited env vars)' : '(default)';
 
     if (!envVarsPresent) {
         console.error(`[Twilio-SMS] Warning: No environment variables found. Check LibreChat configuration.`);
-    }
-
-    // Back-compat for URI naming
-    if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
-        process.env.MONGO_URI = process.env.MONGODB_URI;
-    }
-    if (!process.env.MONGODB_URI && process.env.MONGO_URI) {
-        process.env.MONGODB_URI = process.env.MONGO_URI;
     }
 
     console.error(`[Twilio-SMS] Env loaded: ${usedPath}`);
