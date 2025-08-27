@@ -5,9 +5,16 @@ import { UserContext, Task } from '../types/index.js';
  * Handles both direct user requests and shared context from scheduled tasks
  */
 export function extractUserContext(request: any): UserContext {
+    console.error(`[DEBUG] extractUserContext - Request params:`, request.params);
+    console.error(`[DEBUG] extractUserContext - Request params.userId: "${request.params?.userId}"`);
+    console.error(`[DEBUG] extractUserContext - Request params.originalUserId: "${request.params?.originalUserId}"`);
+
     // Extract user ID from LibreChat MCP request
     const userId = request.params?.userId;
-    const originalUserId = request.params?.originalUserId;
+    // Handle the case where originalUserId comes through as the string "undefined"
+    const originalUserId = request.params?.originalUserId && request.params.originalUserId !== "undefined"
+        ? request.params.originalUserId
+        : undefined;
     const sharedWith = request.params?.sharedWith || [];
     const tenantId = request.params?.tenantId;
 
@@ -34,26 +41,24 @@ export function extractUserContext(request: any): UserContext {
  * Supports creator access, shared access, and original user access
  */
 export function validateUserAccess(task: Task, userContext: UserContext): boolean {
+    console.error(`[DEBUG] validateUserAccess - Task: ${task.name}`);
+    console.error(`[DEBUG] validateUserAccess - Task creatorUserId: "${task.creatorUserId}"`);
+    console.error(`[DEBUG] validateUserAccess - User context userId: "${userContext.userId}"`);
+    console.error(`[DEBUG] validateUserAccess - Task sharedWith:`, task.sharedWith);
+
     // User is the creator
     if (task.creatorUserId === userContext.userId) {
+        console.error(`[DEBUG] validateUserAccess - ✅ User is creator`);
         return true;
     }
 
-    // User is in the shared list (with null/undefined check)
+    // User is in the shared list
     if (task.sharedWith && task.sharedWith.includes(userContext.userId)) {
+        console.error(`[DEBUG] validateUserAccess - ✅ User is in shared list`);
         return true;
     }
 
-    // Original user (from shared context) is the creator
-    if (userContext.originalUserId === task.creatorUserId) {
-        return true;
-    }
-
-    // Original user (from shared context) is in the shared list (with null/undefined check)
-    if (userContext.originalUserId && task.sharedWith && task.sharedWith.includes(userContext.originalUserId)) {
-        return true;
-    }
-
+    console.error(`[DEBUG] validateUserAccess - ❌ No access granted`);
     return false;
 }
 

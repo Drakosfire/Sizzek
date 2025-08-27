@@ -43,26 +43,6 @@ export interface TaskStorageManagerConfig {
         maxRetries: number;
         encryptionKey?: string | undefined;
     } | undefined;
-
-    // Migration settings
-    migrationConfig?: {
-        autoMigrate: boolean;
-        keepBackup: boolean;
-        debugMode: boolean;
-    };
-}
-
-/**
- * Migration status and information
- */
-export interface MigrationInfo {
-    required: boolean;
-    fromVersion?: string;
-    toVersion: string;
-    backupPath?: string;
-    taskCount?: number;
-    completed: boolean;
-    error?: string;
 }
 
 /**

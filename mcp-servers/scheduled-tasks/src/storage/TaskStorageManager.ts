@@ -1,20 +1,17 @@
 import { StorageFactory } from 'mcp-data';
 import { UserStorageInterface } from 'mcp-data';
 import { Task } from '../types/index.js';
-import { TaskStorageData, TaskStorageManagerConfig, MigrationInfo, StorageHealth } from '../types/storage.js';
-import { JsonToUnifiedMigrator } from './migration/JsonToUnifiedMigrator.js';
+import { TaskStorageData, TaskStorageManagerConfig, StorageHealth } from '../types/storage.js';
 import path from 'path';
 
 export class TaskStorageManager {
     private storage: UserStorageInterface<TaskStorageData>;
     private config: TaskStorageManagerConfig;
-    private migrator: JsonToUnifiedMigrator;
     private operationLocks: Map<string, Promise<any>> = new Map();
 
     constructor(config?: Partial<TaskStorageManagerConfig>) {
         this.config = this.buildConfig(config);
         this.storage = this.createStorage();
-        this.migrator = new JsonToUnifiedMigrator(this.config);
     }
 
     /**
@@ -24,15 +21,18 @@ export class TaskStorageManager {
         console.log('🔧 Initializing TaskStorageManager...');
         console.log(`📊 Storage type: ${this.config.storageType}`);
         console.log(`👤 User-based: ${this.config.userBased}`);
-
-        // Check for migration requirements
-        if (this.config.migrationConfig?.autoMigrate) {
-            const migrationInfo = await this.checkMigrationNeeded();
-            if (migrationInfo.required) {
-                console.log('🔄 Migration required from legacy storage format');
-                await this.performMigration();
-            }
+        if (this.config.mongoConfig) {
+            console.log(`🗄️ MongoDB collection: ${this.config.mongoConfig.collectionName}`);
+            console.log(`🗄️ MongoDB connection: ${this.config.mongoConfig.connectionString}`);
         }
+        console.log(`[DEBUG] TaskStorageManager config:`, {
+            storageType: this.config.storageType,
+            userBased: this.config.userBased,
+            mongoConfig: this.config.mongoConfig ? {
+                collectionName: this.config.mongoConfig.collectionName,
+                databaseName: this.config.mongoConfig.databaseName
+            } : 'No mongo config'
+        });
 
         console.log('✅ TaskStorageManager initialized successfully');
     }
@@ -41,22 +41,43 @@ export class TaskStorageManager {
      * Load all tasks for a user or default storage
      */
     async loadTasks(userId?: string): Promise<Task[]> {
+        console.log(`[DEBUG] loadTasks called with userId: "${userId}"`);
         const effectiveUserId = userId || this.config.defaultUserId || 'default';
+        console.log(`[DEBUG] loadTasks using effectiveUserId: "${effectiveUserId}"`);
+        console.log(`[DEBUG] loadTasks config:`, {
+            userBased: this.config.userBased,
+            userId: userId,
+            effectiveUserId: effectiveUserId
+        });
 
         return await this.withLock(effectiveUserId, async () => {
             try {
                 let data: TaskStorageData;
 
                 if (this.config.userBased && userId) {
+                    console.log(`[DEBUG] Loading data for user: "${effectiveUserId}"`);
                     data = await this.storage.loadForUser(effectiveUserId);
                 } else {
+                    console.log(`[DEBUG] Loading data without user context`);
                     data = await this.storage.load();
                 }
 
                 console.log(`📖 Loaded ${data.tasks.length} tasks for user ${effectiveUserId}`);
+                console.log(`[DEBUG] Raw task data sample:`, data.tasks[0] ? {
+                    id: data.tasks[0].id,
+                    name: data.tasks[0].name,
+                    creatorUserId: data.tasks[0].creatorUserId,
+                    type: typeof data.tasks[0].creatorUserId
+                } : 'No tasks');
 
                 // Convert string dates back to Date objects
                 const tasks = this.convertStringDatesToObjects(data.tasks);
+                console.log(`[DEBUG] Converted task data sample:`, tasks[0] ? {
+                    id: tasks[0].id,
+                    name: tasks[0].name,
+                    creatorUserId: tasks[0].creatorUserId,
+                    type: typeof tasks[0].creatorUserId
+                } : 'No tasks');
                 return tasks;
 
             } catch (error: any) {
@@ -185,17 +206,11 @@ export class TaskStorageManager {
             mongoConfig: storageType === 'mongodb' ? {
                 connectionString: process.env.MONGO_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat',
                 databaseName: process.env.MONGODB_DATABASE || 'LibreChat',
-                collectionName: process.env.MONGODB_COLLECTION || 'scheduled_tasks',
+                collectionName: process.env.SCHEDULED_TASKS_MONGODB_COLLECTION || process.env.MONGODB_COLLECTION || 'user_scheduled_tasks',
                 timeout: parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000'),
                 maxRetries: parseInt(process.env.MCP_MONGODB_RETRIES || '3'),
                 encryptionKey: process.env.CREDS_KEY
             } : undefined,
-
-            migrationConfig: {
-                autoMigrate: process.env.MCP_AUTO_MIGRATE !== 'false',
-                keepBackup: process.env.MCP_KEEP_MIGRATION_BACKUP !== 'false',
-                debugMode: process.env.MCP_MIGRATION_DEBUG === 'true'
-            },
 
             ...config
         };
@@ -269,31 +284,31 @@ export class TaskStorageManager {
         }
     }
 
-    private async checkMigrationNeeded(): Promise<MigrationInfo> {
-        return await this.migrator.checkMigrationNeeded();
-    }
-
-    private async performMigration(): Promise<void> {
-        await this.migrator.migrate();
-    }
-
     /**
      * Convert string dates back to Date objects after JSON deserialization
      */
     private convertStringDatesToObjects(tasks: Task[]): Task[] {
-        return tasks.map(task => ({
-            ...task,
-            createdAt: this.convertToDate(task.createdAt),
-            updatedAt: this.convertToDate(task.updatedAt),
-            lastRun: task.lastRun ? this.convertToDate(task.lastRun) : undefined,
-            nextRun: task.nextRun ? this.convertToDate(task.nextRun) : undefined,
-            // Ensure sharedWith is always an array (for backward compatibility)
-            sharedWith: Array.isArray(task.sharedWith) ? task.sharedWith : [],
-            // Ensure creatorUserId exists (for backward compatibility)
-            creatorUserId: task.creatorUserId || process.env.MCP_USER_ID || 'unknown',
-            // Ensure contextType exists (for backward compatibility)
-            contextType: task.contextType || (Array.isArray(task.sharedWith) && task.sharedWith.length > 0 ? 'shared' : 'user')
-        }));
+        return tasks.map(task => {
+            console.log(`[DEBUG] Converting task ${task.name}:`);
+            console.log(`[DEBUG]   Original creatorUserId: "${task.creatorUserId}" (type: ${typeof task.creatorUserId})`);
+
+            const convertedTask = {
+                ...task,
+                createdAt: this.convertToDate(task.createdAt),
+                updatedAt: this.convertToDate(task.updatedAt),
+                lastRun: task.lastRun ? this.convertToDate(task.lastRun) : undefined,
+                nextRun: task.nextRun ? this.convertToDate(task.nextRun) : undefined,
+                // Ensure sharedWith is always an array (for backward compatibility)
+                sharedWith: Array.isArray(task.sharedWith) ? task.sharedWith : [],
+                // Ensure creatorUserId exists (for backward compatibility)
+                creatorUserId: task.creatorUserId || 'unknown',
+                // Ensure contextType exists (for backward compatibility)
+                contextType: task.contextType || (Array.isArray(task.sharedWith) && task.sharedWith.length > 0 ? 'shared' : 'user')
+            };
+
+            console.log(`[DEBUG]   Converted creatorUserId: "${convertedTask.creatorUserId}" (type: ${typeof convertedTask.creatorUserId})`);
+            return convertedTask;
+        });
     }
 
     /**

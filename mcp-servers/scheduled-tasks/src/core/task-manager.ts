@@ -42,48 +42,10 @@ export class TaskManager {
             }
         }
 
-        // Load existing tasks from storage
-        const savedTasks = await this.taskStorageManager.loadTasks(this.userId);
-
-        // Populate in-memory map for quick access
-        this.tasks.clear();
-        for (const task of savedTasks) {
-            this.tasks.set(task.id, task);
-
-            // Handle recovery of scheduled tasks
-            if (task.enabled && task.status === TaskStatus.SCHEDULED && task.nextRun) {
-                const now = new Date();
-                const nextRunTime = new Date(task.nextRun);
-
-                if (nextRunTime <= now) {
-                    // Task is overdue
-                    console.log(`⚠️  Task overdue: ${task.name} (was scheduled for ${nextRunTime.toISOString()})`);
-
-                    if (task.schedule.type === 'once' || task.schedule.type === 'scheduled') {
-                        // One-time tasks that are overdue should be executed immediately
-                        console.log(`🚀 Executing overdue one-time task: ${task.name}`);
-                        setImmediate(() => this.executeTask(task));
-                    } else {
-                        // Recurring tasks should be rescheduled for the next occurrence
-                        console.log(`📅 Rescheduling overdue recurring task: ${task.name}`);
-                        await this.scheduleTask(task);
-                    }
-                } else {
-                    // Task is scheduled for the future, restore the scheduling
-                    console.log(`📅 Restoring scheduled task: ${task.name} (next run: ${nextRunTime.toISOString()})`);
-                    const msUntilRun = nextRunTime.getTime() - now.getTime();
-                    console.log(`⏰ Time until execution: ${this.formatDuration(msUntilRun)}`);
-
-                    const timeout = setTimeout(async () => {
-                        await this.executeTask(task);
-                    }, msUntilRun);
-
-                    this.scheduledTimeouts.set(task.id, timeout);
-                }
-            }
-        }
-
-        console.log(`✅ TaskManager initialized with ${savedTasks.length} tasks`);
+        // Don't load tasks during initialization - load them dynamically per user
+        // This allows the TaskManager to work with multiple users
+        console.log('📋 TaskManager configured for dynamic user-based loading');
+        console.log('✅ TaskManager initialization completed');
     }
 
     private async persistTasks(): Promise<void> {
@@ -518,6 +480,28 @@ export class TaskManager {
     }
 
     getAllTasks(): Task[] {
+        return Array.from(this.tasks.values());
+    }
+
+    async loadTasksForUser(userId: string): Promise<Task[]> {
+        console.error(`[DEBUG] loadTasksForUser called with userId: "${userId}"`);
+        // Load tasks for the specific user
+        console.error(`[DEBUG] loadTasksForUser calling taskStorageManager.loadTasks...`);
+        const savedTasks = await this.taskStorageManager.loadTasks(userId);
+        console.error(`[DEBUG] loadTasksForUser received ${savedTasks.length} tasks from storage`);
+        console.error(`[DEBUG] loadTasksForUser first task sample:`, savedTasks[0] ? {
+            id: savedTasks[0].id,
+            name: savedTasks[0].name,
+            creatorUserId: savedTasks[0].creatorUserId,
+            type: typeof savedTasks[0].creatorUserId
+        } : 'No tasks');
+
+        // Populate in-memory map for quick access
+        this.tasks.clear();
+        for (const task of savedTasks) {
+            this.tasks.set(task.id, task);
+        }
+
         return Array.from(this.tasks.values());
     }
 

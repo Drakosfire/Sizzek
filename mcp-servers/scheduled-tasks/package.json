@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "description": "MCP server for scheduled task management",
     "type": "module",
-    "main": "dist/index.js",
+    "main": "dist/src/index.js",
     "scripts": {
         "build": "tsc",
         "dev": "ts-node src/index.ts",
@@ -16,7 +16,7 @@
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage",
         "lint": "eslint src/**/*.ts",
-        "start": "node dist/index.js"
+        "start": "node dist/src/index.js"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.0",
