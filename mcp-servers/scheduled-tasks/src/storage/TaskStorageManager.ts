@@ -57,9 +57,11 @@ export class TaskStorageManager {
                 if (this.config.userBased && userId) {
                     console.log(`[DEBUG] Loading data for user: "${effectiveUserId}"`);
                     data = await this.storage.loadForUser(effectiveUserId);
+                    console.log(`[DEBUG] Raw data from storage:`, JSON.stringify(data, null, 2));
                 } else {
                     console.log(`[DEBUG] Loading data without user context`);
                     data = await this.storage.load();
+                    console.log(`[DEBUG] Raw data from storage:`, JSON.stringify(data, null, 2));
                 }
 
                 console.log(`📖 Loaded ${data.tasks.length} tasks for user ${effectiveUserId}`);
@@ -67,11 +69,15 @@ export class TaskStorageManager {
                     id: data.tasks[0].id,
                     name: data.tasks[0].name,
                     creatorUserId: data.tasks[0].creatorUserId,
-                    type: typeof data.tasks[0].creatorUserId
+                    type: typeof data.tasks[0].creatorUserId,
+                    hasCreatorUserId: !!data.tasks[0].creatorUserId,
+                    creatorUserIdLength: data.tasks[0].creatorUserId ? data.tasks[0].creatorUserId.length : 0
                 } : 'No tasks');
 
-                // Convert string dates back to Date objects
-                const tasks = this.convertStringDatesToObjects(data.tasks);
+                // Convert string dates back to Date objects (only needed for JSON storage)
+                const tasks = this.config.storageType === 'json'
+                    ? this.convertStringDatesToObjects(data.tasks)
+                    : data.tasks;
                 console.log(`[DEBUG] Converted task data sample:`, tasks[0] ? {
                     id: tasks[0].id,
                     name: tasks[0].name,
@@ -300,8 +306,8 @@ export class TaskStorageManager {
                 nextRun: task.nextRun ? this.convertToDate(task.nextRun) : undefined,
                 // Ensure sharedWith is always an array (for backward compatibility)
                 sharedWith: Array.isArray(task.sharedWith) ? task.sharedWith : [],
-                // Ensure creatorUserId exists (for backward compatibility)
-                creatorUserId: task.creatorUserId || 'unknown',
+                // Preserve creatorUserId - only set to 'unknown' if it's truly missing
+                creatorUserId: task.creatorUserId && task.creatorUserId !== '' ? task.creatorUserId : 'unknown',
                 // Ensure contextType exists (for backward compatibility)
                 contextType: task.contextType || (Array.isArray(task.sharedWith) && task.sharedWith.length > 0 ? 'shared' : 'user')
             };

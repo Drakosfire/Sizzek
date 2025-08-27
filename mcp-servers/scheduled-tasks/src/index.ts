@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// Environment variables are already available from Docker container environment
-// No need to load .env file since ENV_PATH is set and variables are inherited
+import dotenv from 'dotenv';
+import fs from 'fs';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -12,7 +12,33 @@ import { TaskManager } from './core/task-manager.js';
 import { ScheduleValidator } from './core/schedule-validator.js';
 import { LibreChatClient } from './http/librechat-client.js';
 import { ScheduledTasksWebUIManager } from './web-ui-integration.js';
-import { extractUserContext } from './utils/user-context.js';
+import { extractUserContext, validateUserAccess } from './utils/user-context.js';
+
+// Simple environment loader
+function loadEnv(serverLabel: string) {
+    // Load from ENV_PATH or fallback to default location
+    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+
+    console.error(`[${serverLabel}] Looking for environment file at: ${envPath}`);
+    console.error(`[${serverLabel}] File exists: ${fs.existsSync(envPath)}`);
+
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath, override: true });
+        console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
+    } else {
+        console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
+    }
+
+    // Log key environment variables for debugging
+    const masked = (val?: string) => (val ? '✓ Set' : '✗ Not set');
+    console.error(`[${serverLabel}] MCP_STORAGE_TYPE: ${process.env.MCP_STORAGE_TYPE || 'json (default)'}`);
+    console.error(`[${serverLabel}] MONGO_URI: ${masked(process.env.MONGO_URI)}`);
+    console.error(`[${serverLabel}] MONGODB_DATABASE: ${process.env.MONGODB_DATABASE || 'LibreChat (default)'}`);
+    console.error(`[${serverLabel}] MCP_USER_BASED: ${process.env.MCP_USER_BASED || 'false (default)'}`);
+    console.error(`[${serverLabel}] LIBRECHAT_API_KEY: ${masked(process.env.LIBRECHAT_API_KEY)}`);
+}
+
+loadEnv('ScheduledTasks');
 
 // Environment variables validation
 const LIBRECHAT_ENDPOINT = process.env.LIBRECHAT_ENDPOINT || 'http://localhost:3080';
@@ -741,9 +767,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 console.error(`[DEBUG] Found ${allTasks.length} total tasks`);
                 console.error(`[DEBUG] User context:`, userContext);
 
-                // REMOVED: Filter tasks based on user access - returning all tasks for functional baseline
-                const accessibleTasks = allTasks;
-                console.error(`[DEBUG] Returning all ${accessibleTasks.length} tasks (creatorId check removed)`);
+                // Filter tasks based on user access using creatorUserId
+                const accessibleTasks = allTasks.filter(task => validateUserAccess(task, userContext));
+                console.error(`[DEBUG] Filtered to ${accessibleTasks.length} accessible tasks out of ${allTasks.length} total tasks`);
 
                 if (accessibleTasks.length === 0) {
                     return {

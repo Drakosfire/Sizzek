@@ -44,16 +44,27 @@ export function validateUserAccess(task: Task, userContext: UserContext): boolea
     console.error(`[DEBUG] validateUserAccess - Task: ${task.name}`);
     console.error(`[DEBUG] validateUserAccess - Task creatorUserId: "${task.creatorUserId}"`);
     console.error(`[DEBUG] validateUserAccess - User context userId: "${userContext.userId}"`);
+    console.error(`[DEBUG] validateUserAccess - User context effectiveUserId: "${userContext.effectiveUserId}"`);
+    console.error(`[DEBUG] validateUserAccess - User context originalUserId: "${userContext.originalUserId}"`);
     console.error(`[DEBUG] validateUserAccess - Task sharedWith:`, task.sharedWith);
 
-    // User is the creator
-    if (task.creatorUserId === userContext.userId) {
+    // User is the creator (check both userId and effectiveUserId)
+    if (task.creatorUserId === userContext.userId || task.creatorUserId === userContext.effectiveUserId) {
         console.error(`[DEBUG] validateUserAccess - ✅ User is creator`);
         return true;
     }
 
-    // User is in the shared list
-    if (task.sharedWith && task.sharedWith.includes(userContext.userId)) {
+    // User is the original user of a shared task
+    if (userContext.originalUserId && task.creatorUserId === userContext.originalUserId) {
+        console.error(`[DEBUG] validateUserAccess - ✅ User is original user of shared task`);
+        return true;
+    }
+
+    // User is in the shared list (check both userId and effectiveUserId)
+    if (task.sharedWith && (
+        task.sharedWith.includes(userContext.userId) ||
+        task.sharedWith.includes(userContext.effectiveUserId)
+    )) {
         console.error(`[DEBUG] validateUserAccess - ✅ User is in shared list`);
         return true;
     }
