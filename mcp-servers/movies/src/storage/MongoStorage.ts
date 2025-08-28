@@ -16,7 +16,7 @@ export class MongoMovieStorage implements MovieStorageInterface {
     constructor() {
         this.uri = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/LibreChat';
         this.dbName = process.env.MONGODB_DATABASE || 'mcp_data';
-        this.collection = process.env.MONGODB_COLLECTION || 'user_movies';
+        this.collection = process.env.MOVIES_MONGODB_COLLECTION || 'user_movies';
         this.userBased = process.env.MCP_USER_BASED === 'true';
         this.timeout = parseInt(process.env.MCP_MONGODB_TIMEOUT || '10000', 10);
         this.retries = parseInt(process.env.MCP_MONGODB_RETRIES || '3', 10);

@@ -68,7 +68,6 @@ class UserAwareKnowledgeGraphManager {
 
   constructor() {
     // Debug ALL environment variables
-    log('DEBUG', 'Environment variables', process.env);
 
     // Debug specific variables we care about
     log('DEBUG', 'MCP Storage Config', {

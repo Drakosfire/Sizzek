@@ -24,12 +24,23 @@ function loadEnv(serverLabel: string) {
     // Load from ENV_PATH or fallback to default location
     const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
 
+    console.error(`[${serverLabel}] Looking for environment file at: ${envPath}`);
+    console.error(`[${serverLabel}] File exists: ${fs.existsSync(envPath)}`);
+
     if (fs.existsSync(envPath)) {
         dotenv.config({ path: envPath, override: true });
         console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
     } else {
         console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
     }
+
+    // Log key environment variables for debugging
+    const masked = (val?: string) => (val ? '✓ Set' : '✗ Not set');
+    console.error(`[${serverLabel}] MCP_STORAGE_TYPE: ${process.env.MCP_STORAGE_TYPE || 'json (default)'}`);
+    console.error(`[${serverLabel}] MONGO_URI: ${masked(process.env.MONGO_URI)}`);
+    console.error(`[${serverLabel}] MONGODB_DATABASE: ${process.env.MONGODB_DATABASE || 'LibreChat (default)'}`);
+    console.error(`[${serverLabel}] MCP_USER_BASED: ${process.env.MCP_USER_BASED || 'false (default)'}`);
+    console.error(`[${serverLabel}] MOVIES_MONGODB_COLLECTION: ${process.env.MOVIES_MONGODB_COLLECTION || 'Not set'}`);
 }
 
 loadEnv('Movies');
@@ -59,9 +70,9 @@ class MoviesServer {
         log('INFO', '=== Movies MCP Server Environment Variables ===', undefined);
         log('INFO', 'MCP_STORAGE_TYPE: ' + process.env.MCP_STORAGE_TYPE, undefined);
         log('INFO', 'MCP_MOVIES_DATA_DIR: ' + process.env.MCP_MOVIES_DATA_DIR, undefined);
-        log('INFO', 'MONGODB_URI: ' + process.env.MONGODB_URI, undefined);
+        log('INFO', 'MONGODB_URI: ' + (process.env.MONGODB_URI || process.env.MONGO_URI), undefined);
         log('INFO', 'MONGODB_DATABASE: ' + process.env.MONGODB_DATABASE, undefined);
-        log('INFO', 'MONGODB_COLLECTION: ' + process.env.MONGODB_COLLECTION, undefined);
+        log('INFO', 'MONGODB_COLLECTION: ' + (process.env.MOVIES_MONGODB_COLLECTION || process.env.MONGODB_COLLECTION), undefined);
         log('INFO', 'MCP_USER_BASED: ' + process.env.MCP_USER_BASED, undefined);
         log('INFO', 'MCP_USER_ID: ' + process.env.MCP_USER_ID, undefined);
         log('INFO', 'NODE_ENV: ' + process.env.NODE_ENV, undefined);
@@ -166,4 +177,28 @@ class MoviesServer {
 
 // Start the server
 const server = new MoviesServer();
-server.start().catch(console.error); 
+
+// Graceful shutdown handling
+const cleanup = async () => {
+    console.error('🛑 Shutting down Movies MCP Server...');
+    try {
+        // Clean up any resources
+        if (server['storage'] && 'cleanup' in server['storage'] && typeof server['storage'].cleanup === 'function') {
+            await server['storage'].cleanup();
+        }
+        console.error('✅ Movies MCP Server shutdown complete');
+        process.exit(0);
+    } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+        process.exit(1);
+    }
+};
+
+// Handle shutdown signals
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
+
+server.start().catch((error) => {
+    console.error('❌ Server startup failed:', error);
+    process.exit(1);
+}); 
