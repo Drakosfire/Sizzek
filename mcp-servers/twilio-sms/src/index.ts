@@ -29,7 +29,6 @@ function loadEnv(serverLabel: string) {
     if (fs.existsSync(envPath)) {
         const result = dotenv.config({ path: envPath, override: true });
         console.error(`[${serverLabel}] Environment loaded from: ${envPath}`);
-        console.error(`[${serverLabel}] Dotenv result:`, result);
     } else {
         console.error(`[${serverLabel}] Warning: Environment file not found at ${envPath}`);
     }
