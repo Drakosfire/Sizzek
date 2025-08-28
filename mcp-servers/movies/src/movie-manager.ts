@@ -289,7 +289,7 @@ export class MovieManager {
                 };
             }
 
-            currentSharing.sharedWith = currentSharing.sharedWith.filter(id => id !== targetUserId);
+            currentSharing.sharedWith = currentSharing.sharedWith.filter((id: string) => id !== targetUserId);
             currentSharing.updatedAt = new Date().toISOString();
 
             await this.storage.updateJournalSharing(userId, currentSharing);
@@ -297,7 +297,7 @@ export class MovieManager {
             // Update target user's sharing record
             const targetSharing = await this.storage.getJournalSharing(targetUserId);
             if (targetSharing) {
-                targetSharing.sharedBy = targetSharing.sharedBy.filter(id => id !== userId);
+                targetSharing.sharedBy = targetSharing.sharedBy.filter((id: string) => id !== userId);
                 targetSharing.updatedAt = new Date().toISOString();
                 await this.storage.updateJournalSharing(targetUserId, targetSharing);
             }

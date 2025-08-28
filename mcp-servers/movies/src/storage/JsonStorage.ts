@@ -30,7 +30,7 @@ export class JsonMovieStorage implements MovieStorageInterface {
         return movies.filter(movie => {
             if (filters.year && movie.year !== filters.year) return false;
             if (filters.director && !movie.director.toLowerCase().includes(filters.director.toLowerCase())) return false;
-            if (filters.tags && !movie.tags?.some(t => filters.tags!.includes(t))) return false;
+            if (filters.tags && !movie.tags?.some((t: string) => filters.tags!.includes(t))) return false;
             if (filters.addedBy && movie.addedBy !== filters.addedBy) return false;
             return true;
         });
@@ -247,10 +247,10 @@ export class JsonMovieStorage implements MovieStorageInterface {
         const allMembers = new Set([userId]);
 
         // Add users this user shares with
-        journalSharing.sharedWith.forEach(uid => allMembers.add(uid));
+        journalSharing.sharedWith.forEach((uid: string) => allMembers.add(uid));
 
         // Add users who share with this user
-        journalSharing.sharedBy.forEach(uid => allMembers.add(uid));
+        journalSharing.sharedBy.forEach((uid: string) => allMembers.add(uid));
 
         return Array.from(allMembers);
     }

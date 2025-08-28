@@ -85,8 +85,8 @@ export class McpDataMovieStorage implements MovieStorageInterface {
             }
             if (filters.tags && filters.tags.length > 0) {
                 movies = movies.filter(m =>
-                    m.tags && m.tags.some(tag =>
-                        filters.tags!.some(filterTag =>
+                    m.tags && m.tags.some((tag: string) =>
+                        filters.tags!.some((filterTag: string) =>
                             tag.toLowerCase().includes(filterTag.toLowerCase())
                         )
                     )

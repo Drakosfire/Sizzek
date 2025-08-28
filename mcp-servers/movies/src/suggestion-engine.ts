@@ -83,8 +83,8 @@ export class MovieSuggestionEngine {
 
             // Tag preference
             if (moodProfile.preferredTags.length > 0 && movie.tags) {
-                const hasPreferredTag = movie.tags.some(t =>
-                    moodProfile.preferredTags.some(pt =>
+                const hasPreferredTag = movie.tags.some((t: string) =>
+                    moodProfile.preferredTags.some((pt: string) =>
                         t.toLowerCase().includes(pt.toLowerCase())
                     )
                 );
@@ -113,8 +113,8 @@ export class MovieSuggestionEngine {
 
             // Boost for preferred tags
             if (movie.tags && moodProfile.preferredTags.length > 0) {
-                const tagMatches = movie.tags.filter(t =>
-                    moodProfile.preferredTags.some(pt =>
+                const tagMatches = movie.tags.filter((t: string) =>
+                    moodProfile.preferredTags.some((pt: string) =>
                         t.toLowerCase().includes(pt.toLowerCase())
                     )
                 ).length;
