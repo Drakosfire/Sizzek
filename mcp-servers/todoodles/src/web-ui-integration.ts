@@ -1,4 +1,5 @@
 import { MCPWebUI, createTodoSchema, UISchema } from 'mcp-web-ui';
+import path from 'path';
 
 // TodoodleItem interface (matching the main file)
 interface TodoodleItem {
@@ -27,7 +28,7 @@ export class TodoodlesWebUIManager {
         // Create the UI schema specifically for todoodles
         const schema = this.createTodoodlesUISchema();
 
-        // Initialize the web UI framework
+        // Configure the web UI with proper CSS path
         this.webUI = new MCPWebUI<TodoodleItem>({
             dataSource: this.getDataSource.bind(this),
             schema,
@@ -36,9 +37,13 @@ export class TodoodlesWebUIManager {
             pollInterval: 2000, // 2 seconds
             enableLogging: this.enableLogging,
             baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost',
-            // Explicit CSS path for todoodles
-            cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static',
-            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '11000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '12000')]
+            // Use correct path for CSS so MCPWebUI can properly set mcpServerDirectory
+            cssPath: path.join(process.cwd(), 'mcp-servers', 'todoodles', 'static'),
+            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '11000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '12000')],
+            blockedPorts: process.env.MCP_WEB_UI_BLOCKED_PORTS ?
+                process.env.MCP_WEB_UI_BLOCKED_PORTS.split(',')
+                    .map(p => parseInt(p.trim()))
+                    .filter(p => !isNaN(p)) : []
         });
 
         this.log('INFO', 'TodoodlesWebUIManager initialized');
