@@ -1,4 +1,5 @@
 import { MCPWebUI, UISchema } from 'mcp-web-ui';
+import path from 'path';
 
 // GroceryItem interface (matching the grocery list data model)
 interface GroceryItem {
@@ -38,12 +39,27 @@ export class GroceryListWebUIManager {
             pollInterval: 5000, // 5 seconds - reduced from 2000ms to prevent infinite loops
             enableLogging: this.enableLogging,
             baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost',
-            // Explicit CSS path for grocery list
-            cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static',
-            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '11000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '12000')]
+            // Use correct path for CSS so MCPWebUI can properly set mcpServerDirectory
+            cssPath: path.join(process.cwd(), 'mcp-servers', 'grocery-list', 'static'),
+            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '12000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '13000')],
+            blockedPorts: process.env.MCP_WEB_UI_BLOCKED_PORTS ?
+                process.env.MCP_WEB_UI_BLOCKED_PORTS.split(',')
+                    .map(p => parseInt(p.trim()))
+                    .filter(p => !isNaN(p)) : []
         });
 
         this.log('INFO', 'GroceryListWebUIManager initialized');
+
+        // Log web UI environment variables for debugging
+        this.log('DEBUG', '[WEB-UI-ENV] Environment variables:', {
+            MCP_WEB_UI_USE_GATEWAY: process.env.MCP_WEB_UI_USE_GATEWAY,
+            MCP_WEB_UI_GATEWAY_URL: process.env.MCP_WEB_UI_GATEWAY_URL,
+            MCP_WEB_UI_BASE_URL: process.env.MCP_WEB_UI_BASE_URL,
+            MCP_WEB_UI_PROXY_PREFIX: process.env.MCP_WEB_UI_PROXY_PREFIX,
+            MCP_WEB_UI_BIND_ADDRESS: process.env.MCP_WEB_UI_BIND_ADDRESS,
+            MCP_WEB_UI_PORT_MIN: process.env.MCP_WEB_UI_PORT_MIN,
+            MCP_WEB_UI_PORT_MAX: process.env.MCP_WEB_UI_PORT_MAX
+        });
     }
 
     /**

@@ -27,8 +27,8 @@ const VERSION = packageJson.version;
 
 // Simple environment loader
 (() => {
-  // Load from the mounted .env.sizzek file
-  const envPath = '/app/.env.sizzek';
+  // Load from the mounted .env.dev.sizzek file
+  const envPath = '/app/.env.dev.sizzek';
 
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath, override: true });

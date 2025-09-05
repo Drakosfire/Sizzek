@@ -29,6 +29,7 @@ export class TodoodlesWebUIManager {
         const schema = this.createTodoodlesUISchema();
 
         // Configure the web UI with proper CSS path
+
         this.webUI = new MCPWebUI<TodoodleItem>({
             dataSource: this.getDataSource.bind(this),
             schema,
@@ -39,7 +40,7 @@ export class TodoodlesWebUIManager {
             baseUrl: process.env.MCP_WEB_UI_BASE_URL || 'localhost',
             // Use correct path for CSS so MCPWebUI can properly set mcpServerDirectory
             cssPath: path.join(process.cwd(), 'mcp-servers', 'todoodles', 'static'),
-            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '11000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '12000')],
+            portRange: [parseInt(process.env.MCP_WEB_UI_PORT_MIN || '12000'), parseInt(process.env.MCP_WEB_UI_PORT_MAX || '13000')],
             blockedPorts: process.env.MCP_WEB_UI_BLOCKED_PORTS ?
                 process.env.MCP_WEB_UI_BLOCKED_PORTS.split(',')
                     .map(p => parseInt(p.trim()))
@@ -47,6 +48,17 @@ export class TodoodlesWebUIManager {
         });
 
         this.log('INFO', 'TodoodlesWebUIManager initialized');
+
+        // Log web UI environment variables for debugging
+        this.log('DEBUG', '[WEB-UI-ENV] Environment variables:', {
+            MCP_WEB_UI_USE_GATEWAY: process.env.MCP_WEB_UI_USE_GATEWAY,
+            MCP_WEB_UI_GATEWAY_URL: process.env.MCP_WEB_UI_GATEWAY_URL,
+            MCP_WEB_UI_BASE_URL: process.env.MCP_WEB_UI_BASE_URL,
+            MCP_WEB_UI_PROXY_PREFIX: process.env.MCP_WEB_UI_PROXY_PREFIX,
+            MCP_WEB_UI_BIND_ADDRESS: process.env.MCP_WEB_UI_BIND_ADDRESS,
+            MCP_WEB_UI_PORT_MIN: process.env.MCP_WEB_UI_PORT_MIN,
+            MCP_WEB_UI_PORT_MAX: process.env.MCP_WEB_UI_PORT_MAX
+        });
     }
 
     /**
@@ -59,10 +71,10 @@ export class TodoodlesWebUIManager {
     /**
      * Handle the get_web_ui tool call
      */
-    async handleGetWebUI(userId: string): Promise<{
+    async handleGetWebUI(userId: string, extendMinutes = 30): Promise<{
         content: Array<{ type: string; text: string }>;
     }> {
-        this.log('INFO', `[TODOODLES-WEB-UI] handleGetWebUI called with userId: "${userId}"`);
+        this.log('INFO', `[TODOODLES-WEB-UI] handleGetWebUI called with userId: "${userId}" and extendMinutes: ${extendMinutes}`);
 
         // Debug: Check how many todos this user ID has
         try {
@@ -78,7 +90,7 @@ export class TodoodlesWebUIManager {
             this.log('ERROR', `[TODOODLES-WEB-UI] Error checking user todos: ${error}`);
         }
 
-        return this.webUI.handleGetWebUI(userId);
+        return this.webUI.handleGetWebUI(userId, extendMinutes);
     }
 
     /**

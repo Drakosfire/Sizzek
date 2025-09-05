@@ -5,12 +5,11 @@ import { UserContext, Task } from '../types/index.js';
  * Handles both direct user requests and shared context from scheduled tasks
  */
 export function extractUserContext(request: any): UserContext {
-    console.error(`[DEBUG] extractUserContext - Request params:`, request.params);
-    console.error(`[DEBUG] extractUserContext - Request params.userId: "${request.params?.userId}"`);
-    console.error(`[DEBUG] extractUserContext - Request params.originalUserId: "${request.params?.originalUserId}"`);
-
     // Extract user ID from LibreChat MCP request
-    const userId = request.params?.userId;
+    // FIXED: LibreChat sends userId in params.arguments.userId
+    const userId = request.userId ||                    // Top-level (if present)
+        request.params?.arguments?.userId ||            // LibreChat current format (in arguments)
+        request.params?.userId;                         // Legacy/fallback format
     // Handle the case where originalUserId comes through as the string "undefined"
     const originalUserId = request.params?.originalUserId && request.params.originalUserId !== "undefined"
         ? request.params.originalUserId
@@ -84,7 +83,10 @@ export function extractUserId(request: any): string | undefined {
     } catch (error) {
         console.warn('Failed to extract user context, falling back to legacy method:', error);
 
-        // Legacy fallback
+        // Legacy fallback - check both locations
+        if (request.userId && typeof request.userId === 'string' && request.userId.trim() !== '') {
+            return request.userId.trim();
+        }
         if (request.params?.userId) {
             return request.params.userId.trim();
         }

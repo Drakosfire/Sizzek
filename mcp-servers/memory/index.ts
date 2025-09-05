@@ -19,7 +19,7 @@ const __dirname = path.dirname(__filename);
 // Simple environment loader
 function loadEnv(serverLabel: string) {
   // Load from ENV_PATH or fallback to default location
-  const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+  const envPath = process.env.ENV_PATH || '/app/.env.dev.sizzek';
 
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath, override: true });
@@ -458,10 +458,11 @@ class UserAwareKnowledgeGraphManager {
 function extractUserId(request: any): string | undefined {
   // Try various sources for user identification
   const sources = [
-    request.params?.userId,
+    request.userId,                           // Top-level (if present)
+    request.params?.arguments?.userId,        // LibreChat current format (in arguments)
+    request.params?.userId,                   // Legacy/fallback format
     request.params?.userContext?.userId,
     request.params?.metadata?.userId,
-    request.userId,
     request.userContext?.userId,
     request.metadata?.userId,
     process.env.MCP_USER_ID

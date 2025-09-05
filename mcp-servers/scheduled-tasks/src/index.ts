@@ -17,7 +17,7 @@ import { extractUserContext, validateUserAccess } from './utils/user-context.js'
 // Simple environment loader
 function loadEnv(serverLabel: string) {
     // Load from ENV_PATH or fallback to default location
-    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+    const envPath = process.env.ENV_PATH || '/app/.env.dev.sizzek';
 
     console.error(`[${serverLabel}] Looking for environment file at: ${envPath}`);
     console.error(`[${serverLabel}] File exists: ${fs.existsSync(envPath)}`);

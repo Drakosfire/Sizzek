@@ -3,6 +3,12 @@
         "target": "ES2020",
         "module": "ES2022",
         "moduleResolution": "node",
+        "baseUrl": ".",
+        "paths": {
+            "mcp-web-ui": [
+                "../../../mcp-web-ui/dist"
+            ]
+        },
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
         "strict": true,

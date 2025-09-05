@@ -158,10 +158,10 @@ async function main() {
     log('INFO', 'Todoodles MCP Server with Web UI started successfully');
 
     // Log web UI stats periodically for debugging
-    setInterval(() => {
-        const stats = webUIManager.getWebUIStats();
-        if (stats.totalSessions > 0) {
-            log('INFO', `Web UI Stats: ${stats.totalSessions} active sessions`);
+    setInterval(async () => {
+        const stats = await webUIManager.getWebUIStats();
+        if (stats.totalActiveSessions > 0) {
+            log('INFO', `Web UI Stats: ${stats.totalActiveSessions} active sessions`);
         }
     }, 60000); // Every minute
 }

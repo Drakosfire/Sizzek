@@ -27,7 +27,7 @@ const __dirname = path.dirname(__filename);
 // Simple environment loader
 function loadEnv(serverLabel: string) {
     // Load from ENV_PATH or fallback to default location
-    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+    const envPath = process.env.ENV_PATH || '/app/.env.dev.sizzek';
 
     if (fs.existsSync(envPath)) {
         dotenv.config({ path: envPath, override: true });
@@ -94,6 +94,20 @@ export class GroceryListManager {
 
         log('INFO', `[REQUEST-${requestId}] ===== NEW TOOL CALL REQUEST =====`);
         log('INFO', `[REQUEST-${requestId}] Tool: ${request.params?.name || 'UNKNOWN'}`);
+
+        // DEBUG: Log the full request structure to understand what LibreChat is sending
+        log('DEBUG', `[REQUEST-${requestId}] Full request structure:`, {
+            jsonrpc: request.jsonrpc,
+            id: request.id,
+            method: request.method,
+            params: request.params,
+            meta: request.meta || 'NOT_PRESENT',
+            headers: request.headers || 'NOT_PRESENT',
+            user: request.user || 'NOT_PRESENT',
+            userId: request.userId || 'NOT_PRESENT',
+            context: request.context || 'NOT_PRESENT',
+            // Note: LibreChat should pass user context in request.meta or request.params
+        });
 
         // Extract enhanced user context
         const userContext = extractUserContext(request);
@@ -769,7 +783,17 @@ interface UserContext {
 
 // Enhanced user context extraction supporting scheduled task context
 function extractUserContext(request: any): UserContext {
-    const userId = request.params?.userId;
+    // Extract userId with multiple fallback options
+    // FIXED: LibreChat sends userId in params.arguments.userId
+    const userId = request.userId ||                    // Top-level (if present)
+        request.params?.arguments?.userId ||            // LibreChat current format (in arguments)
+        request.params?.userId ||                       // Legacy/fallback format
+        request.meta?.user_id ||
+        request.meta?.userId ||
+        request.meta?.phone_number ||                   // SMS users  
+        request.params?.user_id ||
+        'default';                                      // Use 'default' as fallback instead of MCP_USER_ID
+
     const originalUserId = request.params?.originalUserId;
     const sharedWith = request.params?.sharedWith || [];
     const contextType = request.params?.contextType || 'user';
@@ -779,9 +803,17 @@ function extractUserContext(request: any): UserContext {
     const effectiveUserId = originalUserId || userId;
     const isSharedContext = !!originalUserId;
 
-    if (!effectiveUserId) {
-        log('ERROR', 'No user context available in request:', JSON.stringify(request.params, null, 2));
-        throw new Error('No user context available in request');
+    // Log user ID extraction for debugging
+    if (process.env.MCP_DEBUG === 'true') {
+        log('DEBUG', `Extracted user ID: ${userId}`, {
+            'request.params?.userId': request.params?.userId,
+            'request.meta?.user_id': request.meta?.user_id,
+            'request.meta?.userId': request.meta?.userId,
+            'request.meta?.phone_number': request.meta?.phone_number,
+            'request.params?.user_id': request.params?.user_id,
+            'final_effectiveUserId': effectiveUserId,
+            'note': 'LibreChat should pass user context in request.meta or request.params'
+        });
     }
 
     log('DEBUG', 'Extracted user context:', {
@@ -813,7 +845,10 @@ function extractUserId(request: any): string | undefined {
     } catch (error) {
         log('WARN', 'Failed to extract user context, falling back to legacy method:', error);
 
-        // Legacy fallback
+        // Legacy fallback - check both locations
+        if (request.userId && typeof request.userId === 'string' && request.userId.trim() !== '') {
+            return request.userId.trim();
+        }
         if (request.params?.userId) {
             return request.params.userId.trim();
         }

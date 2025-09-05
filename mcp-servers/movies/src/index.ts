@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 // Simple environment loader
 function loadEnv(serverLabel: string) {
     // Load from ENV_PATH or fallback to default location
-    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+    const envPath = process.env.ENV_PATH || '/app/.env.dev.sizzek';
 
     console.error(`[${serverLabel}] Looking for environment file at: ${envPath}`);
     console.error(`[${serverLabel}] File exists: ${fs.existsSync(envPath)}`);
@@ -143,9 +143,17 @@ class MoviesServer {
             const toolName = request.params?.name;
             const params = request.params?.arguments || {};
 
+            // FIXED: Extract user ID from LibreChat request (in arguments)
+            const userId = request.userId ||                    // Top-level (if present)
+                request.params?.arguments?.userId ||            // LibreChat current format (in arguments)
+                request.params?.userId ||                       // Legacy/fallback format
+                this.userManager.getCurrentUserId();
+            if (userId !== this.userManager.getCurrentUserId()) {
+                this.userManager.setCurrentUserId(userId);
+            }
+
             // Handle web UI tool call
             if (toolName === 'get_web_ui') {
-                const userId = this.userManager.getCurrentUserId();
                 return await this.webUI.handleGetWebUI(
                     userId,
                     params.extend_minutes || 30

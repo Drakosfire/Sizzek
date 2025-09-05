@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 // Simple environment loader
 function loadEnv(serverLabel: string) {
     // Load from ENV_PATH or fallback to default location
-    const envPath = process.env.ENV_PATH || '/app/.env.sizzek';
+    const envPath = process.env.ENV_PATH || '/app/.env.dev.sizzek';
 
     if (fs.existsSync(envPath)) {
         dotenv.config({ path: envPath, override: true });
@@ -31,9 +31,9 @@ function loadEnv(serverLabel: string) {
 
 
 
-    const uri = (process.env.MONGODB_URI || '').replace(/\/\/.*@/, '//***@');
+    const uri = (process.env.MONGO_URI || '').replace(/\/\/.*@/, '//***@');
     const db = process.env.MONGODB_DATABASE || '';
-    const coll = process.env.MONGODB_COLLECTION || process.env.MONGODB_COLLECTION_PREFIX;
+    const coll = process.env.TODOODLES_MONGODB_COLLECTION || process.env.MONGODB_COLLECTION_PREFIX;
     console.error(`[${serverLabel}] DB=${db} | Collection=${coll} | URI=${uri ? '[SET]' : '[NOT_SET]'}`);
 }
 
@@ -88,10 +88,11 @@ export class UserAwareTodoodlesManager {
             MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE,
             MONGO_URI: process.env.MONGO_URI?.replace(/\/\/.*@/, '//***@'), // Hide credentials
             MONGODB_DATABASE: process.env.MONGODB_DATABASE,
-            MONGODB_COLLECTION: process.env.MONGODB_COLLECTION,
+            TODOODLES_MONGODB_COLLECTION: process.env.TODOODLES_MONGODB_COLLECTION,
             MCP_USER_ID: process.env.MCP_USER_ID,
             MCP_USER_BASED: process.env.MCP_USER_BASED,
             TODOS_FILE_PATH: process.env.TODOS_FILE_PATH
+
         });
 
         this.isUserBased = process.env.MCP_USER_BASED === 'true';
@@ -136,7 +137,16 @@ export class UserAwareTodoodlesManager {
             MCP_STORAGE_TYPE: process.env.MCP_STORAGE_TYPE || 'NOT_SET',
             MONGO_URI: process.env.MONGO_URI ? '[SET]' : '[NOT_SET]',
             MONGODB_DATABASE: process.env.MONGODB_DATABASE || 'NOT_SET',
-            MONGODB_COLLECTION: process.env.MONGODB_COLLECTION || 'NOT_SET'
+            TODOODLES_MONGODB_COLLECTION: process.env.TODOODLES_MONGODB_COLLECTION || 'NOT_SET'
+        });
+
+        // DEBUG: Log the full request structure to see how LibreChat sends user ID
+        log('INFO', `[REQUEST-${requestId}] Full request structure:`, {
+            userId: request.userId,
+            paramsUserId: request.params?.userId,
+            metaUserId: request.meta?.userId,
+            hasParams: !!request.params,
+            hasArguments: !!request.params?.arguments
         });
 
         const userId = extractUserId(request);
@@ -985,15 +995,19 @@ const webUIManager = new TodoodlesWebUIManager(todoodlesManager);
 // Function to extract user ID from request (for LibreChat integration)
 function extractUserId(request: any): string | undefined {
     // Check multiple possible locations for user ID in order of priority
-    const userId = request.params?.userId || // LibreChat sends userId in params
+    // FIXED: LibreChat sends userId in params.arguments.userId
+    const userId = request.userId ||                    // Top-level (if present)
+        request.params?.arguments?.userId ||            // LibreChat current format (in arguments)
+        request.params?.userId ||                       // Legacy/fallback format
         request.meta?.user_id ||
         request.meta?.userId ||
-        request.meta?.phone_number || // SMS users  
+        request.meta?.phone_number ||                   // SMS users  
         request.params?.user_id ||
         process.env.MCP_USER_ID;
 
     if (process.env.MCP_DEBUG === 'true') {
         log('DEBUG', `Extracted user ID: ${userId}`, {
+            'request.userId (top-level)': request.userId,
             'request.params?.userId': request.params?.userId,
             'request.meta?.user_id': request.meta?.user_id,
             'request.meta?.userId': request.meta?.userId,
@@ -1024,7 +1038,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: "add_todoodle",
+                name: "add",
                 description: "Add a new todoodle item with optional category, priority, and due date",
                 inputSchema: {
                     type: "object",
@@ -1051,7 +1065,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "complete_todoodle",
+                name: "complete",
                 description: "Mark a todoodle as completed",
                 inputSchema: {
                     type: "object",
@@ -1065,7 +1079,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "update_todoodle",
+                name: "update",
                 description: "Update a todoodle's text, category, priority, or due date",
                 inputSchema: {
                     type: "object",
@@ -1096,7 +1110,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "get_all_todoodles",
+                name: "get_all",
                 description: "Get all todoodles or filter by completion status",
                 inputSchema: {
                     type: "object",
@@ -1110,7 +1124,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "search_todoodles",
+                name: "search",
                 description: "Search todoodles by text or category",
                 inputSchema: {
                     type: "object",
@@ -1124,7 +1138,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "get_todoodles_by_category",
+                name: "get_by_category",
                 description: "Get todoodles by category",
                 inputSchema: {
                     type: "object",
@@ -1138,7 +1152,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "get_todoodles_by_priority",
+                name: "get_by_priority",
                 description: "Get todoodles by priority level",
                 inputSchema: {
                     type: "object",
@@ -1153,7 +1167,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "get_due_todoodles",
+                name: "get_due",
                 description: "Get todoodles that are due today or overdue",
                 inputSchema: {
                     type: "object",
@@ -1167,7 +1181,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "delete_todoodle",
+                name: "delete",
                 description: "Delete a todoodle permanently",
                 inputSchema: {
                     type: "object",
@@ -1190,7 +1204,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "get_todoodles_stats",
+                name: "get_stats",
                 description: "Get statistics about todoodles",
                 inputSchema: {
                     type: "object",
@@ -1224,7 +1238,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     try {
         switch (request.params.name) {
-            case "add_todoodle": {
+            case "add": {
                 const { text, category, priority = 'medium', dueDate } = request.params.arguments as any;
                 const todoodle = await todoodlesManager.addTodo(text, category, priority, dueDate, userId);
                 return {
@@ -1237,7 +1251,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "complete_todoodle": {
+            case "complete": {
                 const { id } = request.params.arguments as any;
                 const todoodle = await todoodlesManager.completeTodo(id, userId);
                 if (todoodle) {
@@ -1261,7 +1275,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }
             }
 
-            case "update_todoodle": {
+            case "update": {
                 const { id, text, category, priority, dueDate } = request.params.arguments as any;
                 const result = await todoodlesManager.updateTodo(id, { text, category, priority, dueDate }, userId);
                 if (result.success && result.updatedTodo) {
@@ -1281,7 +1295,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }
             }
 
-            case "get_all_todoodles": {
+            case "get_all": {
                 const { completed } = request.params.arguments as any;
                 let todoodles;
 
@@ -1307,7 +1321,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "search_todoodles": {
+            case "search": {
                 const { query } = request.params.arguments as any;
                 const todoodles = await todoodlesManager.searchTodos(query, userId);
 
@@ -1325,7 +1339,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "get_todoodles_by_category": {
+            case "get_by_category": {
                 const { category } = request.params.arguments as any;
                 const todoodles = await todoodlesManager.getTodosByCategory(category, userId);
 
@@ -1343,7 +1357,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "get_todoodles_by_priority": {
+            case "get_by_priority": {
                 const { priority } = request.params.arguments as any;
                 const todoodles = await todoodlesManager.getTodosByPriority(priority, userId);
 
@@ -1361,7 +1375,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "get_due_todoodles": {
+            case "get_due": {
                 const { overdue_only } = request.params.arguments as any;
                 const todoodles = overdue_only
                     ? await todoodlesManager.getOverdueTodos(userId)
@@ -1381,7 +1395,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "delete_todoodle": {
+            case "delete": {
                 const { id } = request.params.arguments as any;
                 const result = await todoodlesManager.deleteTodo(id, userId);
 
@@ -1419,7 +1433,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "get_todoodles_stats": {
+            case "get_stats": {
                 const stats = await todoodlesManager.getStats(userId);
 
                 return {
@@ -1440,9 +1454,10 @@ Last updated: ${stats.lastUpdated}`
             }
 
             case "get_web_ui": {
-                log('INFO', `[TODOODLES-WEB-UI-SERVER] get_web_ui called with extracted userId: "${userId}"`);
+                const { extend_minutes = 30 } = request.params.arguments as any;
+                log('INFO', `[TODOODLES-WEB-UI-SERVER] get_web_ui called with extracted userId: "${userId}" and extend_minutes: ${extend_minutes}`);
                 log('INFO', `[TODOODLES-WEB-UI-SERVER] Passing userId to web UI: "${userId || 'default'}"`);
-                return await webUIManager.handleGetWebUI(userId || 'default');
+                return await webUIManager.handleGetWebUI(userId || 'default', extend_minutes);
             }
 
             default:
