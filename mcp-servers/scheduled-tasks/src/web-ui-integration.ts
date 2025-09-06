@@ -25,6 +25,19 @@ export class ScheduledTasksWebUIManager {
     ) {
         const schema = this.createScheduledTasksUISchema();
 
+        // Log web UI environment variables for debugging
+        if (this.enableLogging) {
+            console.log('DEBUG: [WEB-UI-ENV] Environment variables:', {
+                MCP_WEB_UI_USE_GATEWAY: process.env.MCP_WEB_UI_USE_GATEWAY,
+                MCP_WEB_UI_GATEWAY_URL: process.env.MCP_WEB_UI_GATEWAY_URL,
+                MCP_WEB_UI_BASE_URL: process.env.MCP_WEB_UI_BASE_URL,
+                MCP_WEB_UI_PROXY_PREFIX: process.env.MCP_WEB_UI_PROXY_PREFIX,
+                MCP_WEB_UI_BIND_ADDRESS: process.env.MCP_WEB_UI_BIND_ADDRESS,
+                MCP_WEB_UI_PORT_MIN: process.env.MCP_WEB_UI_PORT_MIN,
+                MCP_WEB_UI_PORT_MAX: process.env.MCP_WEB_UI_PORT_MAX
+            });
+        }
+
         this.webUI = new MCPWebUI<TaskDisplayData>({
             dataSource: this.getDataSource.bind(this) as any,
             schema,
