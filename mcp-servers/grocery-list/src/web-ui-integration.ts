@@ -45,7 +45,8 @@ export class GroceryListWebUIManager {
             blockedPorts: process.env.MCP_WEB_UI_BLOCKED_PORTS ?
                 process.env.MCP_WEB_UI_BLOCKED_PORTS.split(',')
                     .map(p => parseInt(p.trim()))
-                    .filter(p => !isNaN(p)) : []
+                    .filter(p => !isNaN(p)) : [],
+            serverName: 'grocery-list' // Set explicit server name for session isolation
         });
 
         this.log('INFO', 'GroceryListWebUIManager initialized');

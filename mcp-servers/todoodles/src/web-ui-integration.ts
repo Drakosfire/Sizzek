@@ -44,7 +44,8 @@ export class TodoodlesWebUIManager {
             blockedPorts: process.env.MCP_WEB_UI_BLOCKED_PORTS ?
                 process.env.MCP_WEB_UI_BLOCKED_PORTS.split(',')
                     .map(p => parseInt(p.trim()))
-                    .filter(p => !isNaN(p)) : []
+                    .filter(p => !isNaN(p)) : [],
+            serverName: 'todoodles' // Set explicit server name for session isolation
         });
 
         this.log('INFO', 'TodoodlesWebUIManager initialized');

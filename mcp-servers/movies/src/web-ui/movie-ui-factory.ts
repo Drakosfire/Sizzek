@@ -149,7 +149,8 @@ export function createMovieWebUI(
         pollInterval: config.pollInterval || 2000,
         enableLogging: config.enableLogging ?? true,
         portRange: config.port ? [config.port, config.port] : [3000, 65535],
-        cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static'
+        cssPath: process.env.MCP_WEB_UI_CSS_PATH || './static',
+        serverName: 'movies' // Set explicit server name for session isolation
     });
 
     return webUI;

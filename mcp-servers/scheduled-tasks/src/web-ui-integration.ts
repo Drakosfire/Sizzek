@@ -44,7 +44,8 @@ export class ScheduledTasksWebUIManager {
             onUpdate: this.handleUIUpdate.bind(this) as any,
             sessionTimeout: 30 * 60 * 1000, // 30 minutes
             pollInterval: 5000, // 5 seconds
-            enableLogging: this.enableLogging
+            enableLogging: this.enableLogging,
+            serverName: 'scheduled-tasks' // Set explicit server name for session isolation
         });
     }
 

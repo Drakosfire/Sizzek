@@ -15,6 +15,7 @@ A practical, opinionated guide for designing, implementing, and testing Model Co
   - version: semver string, bump on breaking API or storage changes
 - Transport
   - stdio via `@modelcontextprotocol/sdk` with graceful shutdown on SIGINT/SIGTERM
+  - **Graceful shutdown handling is REQUIRED** - all MCP servers must implement proper cleanup
 - Environment
   - Unified env loader: support `ENV_PATH` override; otherwise search `.env.local`, `.env`, and `.env.production` (when `NODE_ENV=production`) from the project root and one level up. Validate required vars; never log secrets. Mask credentials in startup logs and print the env file path used.
   - Core envs: `MCP_STORAGE_TYPE`, `MCP_USER_BASED`, `MCP_USER_ID`, backend creds if any
@@ -24,7 +25,10 @@ A practical, opinionated guide for designing, implementing, and testing Model Co
   - `ListTools`: complete tool catalog with accurate `inputSchema`
   - `CallTool`: validate inputs, extract user context, execute, return structured content; set `isError: true` on failures
 - Cleanup
+  - **REQUIRED**: Implement graceful shutdown with SIGINT/SIGTERM handlers
   - Close storage connections; stop child servers if any (e.g., SMS)
+  - Clean up Web UI resources and sessions
+  - Log shutdown progress and exit with appropriate codes (0 for success, 1 for error)
 
 Minimal skeleton (TypeScript/ESM):
 
@@ -115,8 +119,22 @@ async function main() {
   log('INFO', 'Server started');
 }
 
-const cleanup = async () => { log('INFO', 'Shutting down'); process.exit(0); };
-process.on('SIGINT', cleanup); process.on('SIGTERM', cleanup);
+const cleanup = async () => { 
+    log('INFO', 'Shutting down'); 
+    try {
+        // Clean up any resources (storage, web UI, etc.)
+        if (server['storage'] && 'cleanup' in server['storage'] && typeof server['storage'].cleanup === 'function') {
+            await server['storage'].cleanup();
+        }
+        log('INFO', 'Shutdown complete');
+        process.exit(0);
+    } catch (error) {
+        log('ERROR', 'Error during shutdown', error);
+        process.exit(1);
+    }
+};
+process.on('SIGINT', cleanup); 
+process.on('SIGTERM', cleanup);
 main().catch((e) => { log('ERROR', 'Startup failed', e); process.exit(1); });
 ```
 

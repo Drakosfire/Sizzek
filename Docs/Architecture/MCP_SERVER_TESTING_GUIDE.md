@@ -65,6 +65,9 @@ your-mcp-server/
 - Clean data isolation per user/test case
 
 ### 2. **Proper Exit Behavior**
+- **Graceful shutdown is REQUIRED** - all MCP servers must handle SIGINT/SIGTERM properly
+- Tests must verify that servers exit cleanly when interrupted
+- No hanging processes or resource leaks after shutdown
 ```javascript
 // ❌ BAD: Tests hang indefinitely
 runner.run().catch(console.error);
@@ -690,7 +693,7 @@ export class ComprehensiveTestRunner {
 
 ### ❌ Problem: Tests Never Exit
 
-**Cause**: Unclean resource cleanup, hanging timers, or open connections
+**Cause**: Unclean resource cleanup, hanging timers, open connections, or missing graceful shutdown handlers
 
 **Solution**: 
 ```javascript
@@ -706,6 +709,24 @@ async function runTests() {
         process.exit(1);
     }
 }
+
+// MCP servers must implement graceful shutdown
+const cleanup = async () => {
+    console.error('🛑 Shutting down server...');
+    try {
+        // Clean up resources (storage, web UI, etc.)
+        if (server['storage'] && 'cleanup' in server['storage']) {
+            await server['storage'].cleanup();
+        }
+        console.error('✅ Server shutdown complete');
+        process.exit(0);
+    } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+        process.exit(1);
+    }
+};
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
 ```
 
 ### ❌ Problem: Data Pollution Between Tests
@@ -791,6 +812,9 @@ const result = await manager.deleteItem(item.id, 'test-user'); // Use actual ID
 - [ ] Resource cleanup prevents hanging
 - [ ] Timeouts configured for reliable execution
 - [ ] Error handling provides useful debugging information
+- [ ] **Graceful shutdown handlers implemented and tested**
+- [ ] **SIGINT/SIGTERM signals handled properly**
+- [ ] **No hanging processes after shutdown**
 
 ### ✅ MCP Server Testing
 - [ ] Integration tests cover full MCP protocol

@@ -1,0 +1,133 @@
+# General Coding Standards
+
+## Core Principles
+
+### 1. Clean, Efficient, and Maintainable Code
+- Write code that is self-documenting through clear naming and structure
+- Prefer simplicity over complexity - if a solution seems too clever, it probably is
+- Follow the Single Responsibility Principle - each function/class should have one clear purpose
+- Write code that others can easily understand and modify
+- Optimize for readability first, performance second (unless performance is critical)
+
+### 2. Proven Paradigms and Patterns
+- **SOLID Principles**: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
+- **DRY (Don't Repeat Yourself)**: Eliminate code duplication through proper abstraction
+- **KISS (Keep It Simple, Stupid)**: Prefer straightforward solutions over complex ones
+- **YAGNI (You Aren't Gonna Need It)**: Don't add features until they're actually needed
+- **Fail Fast**: Detect and handle errors as early as possible
+- **Defensive Programming**: Validate inputs and handle edge cases explicitly
+
+### 3. Code Organization and Structure
+- Group related functionality together
+- Use consistent naming conventions (camelCase for variables/functions, PascalCase for classes)
+- Keep functions small and focused (ideally under 20 lines)
+- Use meaningful variable and function names that describe their purpose
+- Organize imports logically and remove unused imports
+
+## Communication and Workflow
+
+### 4. No Unnecessary Summaries During Work
+- **Do NOT provide code summaries** unless explicitly requested
+- Focus on writing clean, self-documenting code instead
+- Let the code speak for itself through clear structure and naming
+- Only add comments when the "why" is not obvious from the "what"
+
+### 5. No Compliments to User
+- **Do NOT give compliments or praise to the user**
+- Focus on the technical work and solutions
+- Avoid phrases like "great job", "excellent work", "well done", etc.
+
+### 6. Pattern Discussion Before Implementation
+- **Always discuss architectural patterns and approaches before writing code**
+- Explain the reasoning behind design decisions
+- Consider multiple approaches and their trade-offs
+- Get agreement on the pattern before implementation begins
+- Document the chosen pattern and its rationale
+
+### 7. Error Handling Best Practices
+- **Do NOT abuse try-catch/except patterns**
+- Only use try-catch for truly exceptional cases, not for normal flow control
+- Prefer explicit error checking over exception handling when possible
+- Use specific exception types rather than catching generic exceptions
+- Always handle the error appropriately - don't just catch and ignore
+- Consider whether the error should be logged, reported, or handled gracefully
+
+## Specific Guidelines
+
+### 8. Function and Method Design
+- Keep functions small and focused on a single task
+- Use descriptive parameter names
+- Return early to reduce nesting
+- Prefer pure functions when possible (no side effects)
+- Use default parameters instead of multiple overloads
+
+### 9. Variable and Data Management
+- Declare variables as close to their use as possible
+- Use const/let appropriately (prefer const when possible)
+- Avoid global variables and mutable state
+- Use meaningful data structures (objects, arrays, maps) appropriately
+- Prefer immutable data when possible
+
+### 10. Performance Considerations
+- Profile before optimizing - don't optimize prematurely
+- Use appropriate data structures for the task
+- Consider time and space complexity
+- Cache expensive operations when beneficial
+- Use lazy loading and pagination for large datasets
+
+### 11. Testing and Quality
+- Write testable code (dependency injection, pure functions)
+- Test edge cases and error conditions
+- Use descriptive test names that explain the scenario
+- Keep tests simple and focused
+- Prefer integration tests over unit tests for complex workflows
+
+### 12. Documentation and Comments
+- Write self-documenting code with clear names
+- Only comment the "why", not the "what"
+- Keep documentation close to the code it describes
+- Update documentation when code changes
+- Use JSDoc/TSDoc for public APIs
+
+### 12. Security and Best Practices
+- Validate and sanitize all inputs
+- Use parameterized queries to prevent injection attacks
+- Follow the principle of least privilege
+- Don't trust user input
+- Use secure defaults and fail securely
+
+## Language-Specific Guidelines
+
+### JavaScript/TypeScript
+- Use TypeScript for type safety when possible
+- Prefer const and let over var
+- Use async/await over callbacks when possible
+- Use destructuring for cleaner code
+- Prefer functional programming patterns (map, filter, reduce)
+
+### Python
+- Follow PEP 8 style guidelines
+- Use type hints when possible
+- Prefer list comprehensions over loops when appropriate
+- Use context managers (with statements) for resource management
+- Use dataclasses for simple data containers
+
+### General
+- Use consistent formatting and indentation
+- Follow language-specific conventions and idioms
+- Use linters and formatters to maintain consistency
+- Keep dependencies minimal and up-to-date
+
+## Code Review Checklist
+- [ ] Is the code easy to understand?
+- [ ] Does it follow established patterns?
+- [ ] Are error cases handled appropriately?
+- [ ] Is the code testable?
+- [ ] Are there any security concerns?
+- [ ] Is the performance acceptable?
+- [ ] Is the documentation adequate?
+- [ ] Are there any code smells or anti-patterns?
+
+Remember: The goal is to write code that is easy to read, understand, maintain, and extend. When in doubt, prefer the simpler, more explicit solution over the clever or complex one.
+alwaysApply: true
+---
