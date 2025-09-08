@@ -2,6 +2,10 @@
 
 # MCP Gateway Proxy Server Startup Script
 # This script starts the standalone gateway service with proper shutdown handling
+#
+# Environment Variables:
+#   MCP_WEB_UI_PATH - Override the path to mcp-web-ui directory
+#                     If not set, the script will search common locations
 
 set -e
 
@@ -61,13 +65,79 @@ echo -e "${BLUE}🚀 Starting MCP Gateway Proxy Server...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-GATEWAY_DIR="$PROJECT_ROOT/../mcp-web-ui"
+# Try multiple possible locations for mcp-web-ui
+GATEWAY_DIR=""
 
-# Check if we're in the right directory
-if [ ! -f "$GATEWAY_DIR/package.json" ]; then
-    echo -e "${RED}❌ Error: mcp-web-ui directory not found at $GATEWAY_DIR${NC}"
-    echo "Please run this script from the Sizzek project root directory"
-    exit 1
+# Option 1: Sibling directory (current assumption)
+if [ -f "$PROJECT_ROOT/../mcp-web-ui/package.json" ]; then
+    GATEWAY_DIR="$PROJECT_ROOT/../mcp-web-ui"
+    echo -e "${GREEN}✅ Found mcp-web-ui at: $GATEWAY_DIR${NC}"
+fi
+
+# Option 2: Check if mcp-web-ui is in the same directory as Sizzek
+if [ -z "$GATEWAY_DIR" ] && [ -f "$PROJECT_ROOT/mcp-web-ui/package.json" ]; then
+    GATEWAY_DIR="$PROJECT_ROOT/mcp-web-ui"
+    echo -e "${GREEN}✅ Found mcp-web-ui at: $GATEWAY_DIR${NC}"
+fi
+
+# Option 3: Check if mcp-web-ui is in the current working directory
+if [ -z "$GATEWAY_DIR" ] && [ -f "./mcp-web-ui/package.json" ]; then
+    GATEWAY_DIR="$(pwd)/mcp-web-ui"
+    echo -e "${GREEN}✅ Found mcp-web-ui at: $GATEWAY_DIR${NC}"
+fi
+
+# Option 4: Check if mcp-web-ui is in the parent directory
+if [ -z "$GATEWAY_DIR" ] && [ -f "../mcp-web-ui/package.json" ]; then
+    GATEWAY_DIR="$(cd .. && pwd)/mcp-web-ui"
+    echo -e "${GREEN}✅ Found mcp-web-ui at: $GATEWAY_DIR${NC}"
+fi
+
+# If still not found, try to find it in common locations
+if [ -z "$GATEWAY_DIR" ]; then
+    echo -e "${YELLOW}🔍 Searching for mcp-web-ui in common locations...${NC}"
+    
+    # Search in parent directories
+    SEARCH_DIRS=(
+        "$PROJECT_ROOT/../mcp-web-ui"
+        "$PROJECT_ROOT/mcp-web-ui"
+        "./mcp-web-ui"
+        "../mcp-web-ui"
+        "/home/alan/projects/mcp-web-ui"
+        "/opt/mcp-web-ui"
+        "/usr/local/mcp-web-ui"
+    )
+    
+    for dir in "${SEARCH_DIRS[@]}"; do
+        if [ -f "$dir/package.json" ]; then
+            GATEWAY_DIR="$dir"
+            echo -e "${GREEN}✅ Found mcp-web-ui at: $GATEWAY_DIR${NC}"
+            break
+        fi
+    done
+fi
+
+# Final check
+if [ -z "$GATEWAY_DIR" ] || [ ! -f "$GATEWAY_DIR/package.json" ]; then
+    echo -e "${RED}❌ Error: mcp-web-ui directory not found${NC}"
+    echo -e "${YELLOW}Searched locations:${NC}"
+    echo "  - $PROJECT_ROOT/../mcp-web-ui"
+    echo "  - $PROJECT_ROOT/mcp-web-ui"
+    echo "  - ./mcp-web-ui"
+    echo "  - ../mcp-web-ui"
+    echo "  - /home/alan/projects/mcp-web-ui"
+    echo "  - /opt/mcp-web-ui"
+    echo "  - /usr/local/mcp-web-ui"
+    echo ""
+    echo -e "${YELLOW}Please ensure mcp-web-ui is installed and accessible${NC}"
+    echo -e "${YELLOW}You can also set MCP_WEB_UI_PATH environment variable to specify the path${NC}"
+    
+    # Check if environment variable is set
+    if [ ! -z "$MCP_WEB_UI_PATH" ] && [ -f "$MCP_WEB_UI_PATH/package.json" ]; then
+        GATEWAY_DIR="$MCP_WEB_UI_PATH"
+        echo -e "${GREEN}✅ Using mcp-web-ui from environment variable: $GATEWAY_DIR${NC}"
+    else
+        exit 1
+    fi
 fi
 
 # Change to gateway directory

@@ -14,9 +14,7 @@ if [[ ! -d "$MCP_DIR" ]]; then
 fi
 
 # Servers to process (dir names under mcp-servers)
-SERVERS=(
-  "Gmail-MCP-Server"
-  "google-calendar-mcp"
+SERVERS=(  
   "grocery-list"
   "memory"
   "movies"
