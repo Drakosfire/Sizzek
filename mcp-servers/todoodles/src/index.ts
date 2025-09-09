@@ -157,7 +157,7 @@ export class UserAwareTodoodlesManager {
             log('INFO', `[REQUEST-${requestId}] Starting tool execution: ${request.params.name}`);
 
             switch (request.params.name) {
-                case "add_todoodle": {
+                case "add": {
                     const { text, category, priority = 'medium', dueDate } = request.params.arguments;
 
                     if (!text) {
@@ -193,7 +193,7 @@ export class UserAwareTodoodlesManager {
                     };
                 }
 
-                case "complete_todoodle": {
+                case "complete": {
                     const { id } = request.params.arguments;
 
                     if (!id) {
@@ -239,7 +239,7 @@ export class UserAwareTodoodlesManager {
                     }
                 }
 
-                case "update_todoodle": {
+                case "update": {
                     const { id, text, category, priority, dueDate } = request.params.arguments;
 
                     if (!id) {
@@ -288,8 +288,8 @@ export class UserAwareTodoodlesManager {
                     }
                 }
 
-                case "get_all_todoodles": {
-                    log('INFO', `[REQUEST-${requestId}] Processing get_all_todoodles`);
+                case "get_all": {
+                    log('INFO', `[REQUEST-${requestId}] Processing get_all`);
                     const { completed } = request.params.arguments;
                     log('INFO', `[REQUEST-${requestId}] Completed filter: ${completed}`);
                     log('INFO', `[REQUEST-${requestId}] Using userId: "${userId || 'NONE'}"`);
@@ -327,7 +327,7 @@ export class UserAwareTodoodlesManager {
                     return response;
                 }
 
-                case "delete_todoodle": {
+                case "delete": {
                     const { id } = request.params.arguments;
 
                     if (!id) {
@@ -361,7 +361,7 @@ export class UserAwareTodoodlesManager {
                     }
                 }
 
-                case "search_todoodles": {
+                case "search": {
                     const { query } = request.params.arguments;
 
                     if (!query) {
@@ -382,7 +382,7 @@ export class UserAwareTodoodlesManager {
                     };
                 }
 
-                case "get_todoodles_by_category": {
+                case "get_by_category": {
                     const { category } = request.params.arguments;
 
                     if (!category) {
@@ -403,7 +403,7 @@ export class UserAwareTodoodlesManager {
                     };
                 }
 
-                case "get_todoodles_by_priority": {
+                case "get_by_priority": {
                     const { priority } = request.params.arguments;
 
                     if (!priority) {
@@ -431,7 +431,7 @@ export class UserAwareTodoodlesManager {
                     };
                 }
 
-                case "get_due_todoodles": {
+                case "get_due": {
                     const { overdue_only, days } = request.params.arguments;
 
                     if (days !== undefined && (typeof days !== 'number' || days < 0)) {
@@ -470,7 +470,7 @@ export class UserAwareTodoodlesManager {
                     };
                 }
 
-                case "get_todoodles_stats": {
+                case "get_stats": {
                     const stats = await this.getStats(userId);
                     return {
                         content: [
