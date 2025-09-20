@@ -7,7 +7,7 @@
  * - SSL_CERT_PATH: Path to SSL certificate file
  * - LIBRECHAT_AGENT_ID: ID of the LibreChat agent to use (optional, defaults to example from docs)
  * - LIBRECHAT_AGENT_MODEL: Model to use for the agent (optional, defaults to gpt-4o)
- * - PORT: Server port (optional, defaults to 3081)
+ * - SMS_PORT: Server port (optional, defaults to 3081)
  */
 
 import express, { Request, Response } from 'express';
@@ -100,7 +100,7 @@ async function fetchMediaAsBase64(url: string, contentType: string): Promise<str
 }
 
 const app = express();
-const PORT = process.env.PORT || 3081;
+const PORT = process.env.SMS_PORT || 3081;
 const API_KEY = process.env.EXTERNAL_MESSAGE_API_KEY;
 
 // SSL/TLS Configuration (Optional)
@@ -267,7 +267,7 @@ function getExtensionFromMimeType(mimeType: string): string {
 
 async function forwardToClient(message: string, apiKey: string, phoneNumber: string, from: string, media?: Array<{ url: string; content_type: string; index: number; supported: boolean; base64?: string; filename?: string }>) {
     // Use placeholder conversation ID for SMS routing - let LibreChat handle phone-based discovery
-    const url = `http://localhost:3080/api/messages/sms-conversation`;
+    const url = `http://LibreChat:3080/api/messages/sms-conversation`;
 
     // Process media: convert URLs to base64 for supported media
     let processedMedia = media;
