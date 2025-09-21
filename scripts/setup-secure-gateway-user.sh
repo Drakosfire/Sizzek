@@ -25,7 +25,7 @@ fi
 GATEWAY_USER="mcp-gateway"
 GATEWAY_HOME="/opt/mcp-gateway"
 GATEWAY_LOGS="$GATEWAY_HOME/logs"
-PROJECT_DIR="/media/drakosfire/Projects/LibreChat"
+PROJECT_DIR="../../External-Endpoint"
 
 echo -e "\n${BLUE}👤 Creating dedicated user: $GATEWAY_USER${NC}"
 
