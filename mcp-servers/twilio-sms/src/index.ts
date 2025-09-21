@@ -328,7 +328,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 if (args.tags) metadata.tags = args.tags;
 
                 // Send request to SMS server to update contact
-                const response = await fetch('http://localhost:3081/api/manage-contact', {
+                const response = await fetch('http://LibreChat:3081/api/manage-contact', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -413,52 +413,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
 // Start the server
 async function main() {
-    // Start the SMS server as a child process
-    const smsServerPath = path.join(__dirname, '..', 'dist', 'sms-server.js');
-    console.error('📍 [FORK-DEBUG] Starting SMS server from:', smsServerPath);
-    console.error('📍 [FORK-DEBUG] File exists:', fs.existsSync(smsServerPath));
-    console.error('📍 [FORK-DEBUG] Current working directory:', process.cwd());
-    console.error('📍 [FORK-DEBUG] __dirname:', __dirname);
+    console.error('🚀 [TWILIO-SMS-MCP] Starting Twilio SMS MCP Server...');
+    console.error('🚀 [TWILIO-SMS-MCP] Process PID:', process.pid);
+    console.error('🚀 [TWILIO-SMS-MCP] Working directory:', process.cwd());
 
-    const smsServer = fork(smsServerPath, [], {
-        stdio: 'inherit',
-        env: process.env
-    });
-
-    console.error('📍 [FORK-DEBUG] SMS Server forked with PID:', smsServer.pid);
-    console.error('📍 [FORK-DEBUG] SMS Server connected:', smsServer.connected);
-
-    smsServer.on('spawn', () => {
-        console.error('📍 [FORK-DEBUG] SMS Server spawned successfully with PID:', smsServer.pid);
-    });
-
-    smsServer.on('error', (error) => {
-        console.error('❌ [FORK-DEBUG] SMS Server error:', error);
-    });
-
-    smsServer.on('exit', (code, signal) => {
-        console.error(`❌ [FORK-DEBUG] SMS Server exited with code ${code}, signal ${signal}`);
-    });
-
-    smsServer.on('close', (code, signal) => {
-        console.error(`❌ [FORK-DEBUG] SMS Server closed with code ${code}, signal ${signal}`);
-    });
+    // Note: The HTTP SMS server should be started separately via docker-compose or systemd
+    // This MCP server only handles tool calls, not HTTP webhooks
+    console.error('💡 [TWILIO-SMS-MCP] For SMS webhooks, ensure separate HTTP server is running on port 3081');
+    console.error('💡 [TWILIO-SMS-MCP] HTTP server should be started with: node /app/mcp-servers/twilio-sms/dist/sms-server.js');
 
     // Start the MCP server
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Twilio SMS MCP Server running on stdio");
+    console.error("✅ [TWILIO-SMS-MCP] Twilio SMS MCP Server running on stdio");
 
     // Handle process termination
     process.on('SIGTERM', () => {
-        console.error('Received SIGTERM signal');
-        smsServer.kill();
+        console.error('📍 [TWILIO-SMS-MCP] Received SIGTERM signal');
         process.exit(0);
     });
 
     process.on('SIGINT', () => {
-        console.error('Received SIGINT signal');
-        smsServer.kill();
+        console.error('📍 [TWILIO-SMS-MCP] Received SIGINT signal');
         process.exit(0);
     });
 }
