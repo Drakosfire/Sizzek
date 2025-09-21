@@ -25,6 +25,11 @@ import { ContactManager } from './contacts.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Add startup logging
+console.error(`📍 [SMS-SERVER-STARTUP] SMS Server script starting...`);
+console.error(`📍 [SMS-SERVER-STARTUP] Process PID: ${process.pid}`);
+console.error(`📍 [SMS-SERVER-STARTUP] Script path: ${__filename}`);
+
 // Load environment from inherited environment variables or ENV_PATH
 function loadEnv(serverLabel: string) {
     // Try to load from ENV_PATH first
@@ -641,7 +646,9 @@ if (sslEnabled && httpsOptions) {
 } else {
     // Start HTTP-only server
     app.listen(PORT, () => {
-        console.error(`[SMS-SERVER] HTTP Server started and listening on port ${PORT}`);
+        console.error(`📍 [SMS-SERVER] HTTP Server started and listening on port ${PORT}`);
+        console.error(`📍 [SMS-SERVER] Process PID: ${process.pid}`);
+        console.error(`📍 [SMS-SERVER] Parent PID: ${process.ppid}`);
         console.error('[SMS-SERVER] Environment:', {
             port: PORT,
             apiKeyPresent: !!API_KEY,

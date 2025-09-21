@@ -415,19 +415,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 async function main() {
     // Start the SMS server as a child process
     const smsServerPath = path.join(__dirname, '..', 'dist', 'sms-server.js');
-    console.error('Starting SMS server from:', smsServerPath);
+    console.error('📍 [FORK-DEBUG] Starting SMS server from:', smsServerPath);
+    console.error('📍 [FORK-DEBUG] File exists:', fs.existsSync(smsServerPath));
+    console.error('📍 [FORK-DEBUG] Current working directory:', process.cwd());
+    console.error('📍 [FORK-DEBUG] __dirname:', __dirname);
 
     const smsServer = fork(smsServerPath, [], {
         stdio: 'inherit',
         env: process.env
     });
 
-    smsServer.on('error', (error) => {
-        console.error('SMS Server error:', error);
+    console.error('📍 [FORK-DEBUG] SMS Server forked with PID:', smsServer.pid);
+    console.error('📍 [FORK-DEBUG] SMS Server connected:', smsServer.connected);
+
+    smsServer.on('spawn', () => {
+        console.error('📍 [FORK-DEBUG] SMS Server spawned successfully with PID:', smsServer.pid);
     });
 
-    smsServer.on('exit', (code) => {
-        console.error(`SMS Server exited with code ${code}`);
+    smsServer.on('error', (error) => {
+        console.error('❌ [FORK-DEBUG] SMS Server error:', error);
+    });
+
+    smsServer.on('exit', (code, signal) => {
+        console.error(`❌ [FORK-DEBUG] SMS Server exited with code ${code}, signal ${signal}`);
+    });
+
+    smsServer.on('close', (code, signal) => {
+        console.error(`❌ [FORK-DEBUG] SMS Server closed with code ${code}, signal ${signal}`);
     });
 
     // Start the MCP server

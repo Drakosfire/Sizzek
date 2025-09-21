@@ -54,6 +54,7 @@ export class TodoodlesWebUIManager {
         this.log('DEBUG', '[WEB-UI-ENV] Environment variables:', {
             MCP_WEB_UI_USE_GATEWAY: process.env.MCP_WEB_UI_USE_GATEWAY,
             MCP_WEB_UI_GATEWAY_URL: process.env.MCP_WEB_UI_GATEWAY_URL,
+            MCP_WEB_UI_MONGO_URL: process.env.MCP_WEB_UI_MONGO_URL,
             MCP_WEB_UI_BASE_URL: process.env.MCP_WEB_UI_BASE_URL,
             MCP_WEB_UI_PROXY_PREFIX: process.env.MCP_WEB_UI_PROXY_PREFIX,
             MCP_WEB_UI_BIND_ADDRESS: process.env.MCP_WEB_UI_BIND_ADDRESS,
