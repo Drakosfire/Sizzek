@@ -82,14 +82,14 @@ mcpServers:
     args:
       - "/app/mcp-servers/twilio-sms/dist/index.js"
 
-  google-calendar:
-    type: stdio
-    command: node
-    args:
-      - "/app/mcp-servers/google-calendar-mcp/build/index.js"
-    timeout: 30000
-    initTimeout: 10000
-    stderr: inherit
+  # google-calendar:
+  #   type: stdio
+  #   command: node
+  #   args:
+  #     - "/app/mcp-servers/google-calendar-mcp/build/index.js"
+  #   timeout: 30000
+  #   initTimeout: 10000
+  #   stderr: inherit
 
   scheduled-tasks:
     type: stdio

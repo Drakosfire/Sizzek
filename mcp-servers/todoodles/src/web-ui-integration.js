@@ -6,7 +6,7 @@ import path from 'path';
  */
 export class TodoodlesWebUIManager {
     constructor(todoodlesManager, // The main UserAwareTodoodlesManager instance
-    enableLogging = true) {
+        enableLogging = true) {
         this.todoodlesManager = todoodlesManager;
         this.enableLogging = enableLogging;
         // Create the UI schema specifically for todoodles
@@ -34,6 +34,7 @@ export class TodoodlesWebUIManager {
         this.log('DEBUG', '[WEB-UI-ENV] Environment variables:', {
             MCP_WEB_UI_USE_GATEWAY: process.env.MCP_WEB_UI_USE_GATEWAY,
             MCP_WEB_UI_GATEWAY_URL: process.env.MCP_WEB_UI_GATEWAY_URL,
+            MCP_WEB_UI_MONGO_URL: process.env.MCP_WEB_UI_MONGO_URL,
             MCP_WEB_UI_BASE_URL: process.env.MCP_WEB_UI_BASE_URL,
             MCP_WEB_UI_PROXY_PREFIX: process.env.MCP_WEB_UI_PROXY_PREFIX,
             MCP_WEB_UI_BIND_ADDRESS: process.env.MCP_WEB_UI_BIND_ADDRESS,
@@ -117,38 +118,38 @@ export class TodoodlesWebUIManager {
             title: "Todoodles Dashboard",
             description: "Manage your todoodles with an interactive web interface",
             components: [{
-                    type: "list",
-                    id: "todoodles-list",
-                    title: "Your Todoodles",
-                    config: {
-                        showItemCount: true,
-                        fields: [
-                            { key: "id", label: "ID", type: "text" },
-                            { key: "text", label: "Task", type: "text" },
-                            {
-                                key: "priority",
-                                label: "Priority",
-                                type: "badge",
-                                format: (value) => value.toUpperCase()
-                            },
-                            { key: "category", label: "Category", type: "text" },
-                            {
-                                key: "dueDate",
-                                label: "Due Date",
-                                type: "date",
-                                format: (value) => value ? new Date(value).toLocaleDateString() : ''
-                            },
-                            {
-                                key: "createdAt",
-                                label: "Created",
-                                type: "date",
-                                format: (value) => new Date(value).toLocaleDateString()
-                            }
-                        ],
-                        sortable: true,
-                        filterable: true
-                    }
-                }],
+                type: "list",
+                id: "todoodles-list",
+                title: "Your Todoodles",
+                config: {
+                    showItemCount: true,
+                    fields: [
+                        { key: "id", label: "ID", type: "text" },
+                        { key: "text", label: "Task", type: "text" },
+                        {
+                            key: "priority",
+                            label: "Priority",
+                            type: "badge",
+                            format: (value) => value.toUpperCase()
+                        },
+                        { key: "category", label: "Category", type: "text" },
+                        {
+                            key: "dueDate",
+                            label: "Due Date",
+                            type: "date",
+                            format: (value) => value ? new Date(value).toLocaleDateString() : ''
+                        },
+                        {
+                            key: "createdAt",
+                            label: "Created",
+                            type: "date",
+                            format: (value) => new Date(value).toLocaleDateString()
+                        }
+                    ],
+                    sortable: true,
+                    filterable: true
+                }
+            }],
             actions: [
                 {
                     id: "add",
